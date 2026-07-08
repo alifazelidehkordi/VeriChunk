@@ -189,23 +189,27 @@ server.registerTool(
   "commit_chunk_analysis",
   {
     title: "Commit chunk analysis",
-    description: "Store bilingual topic description and coherence flag for a chunk.",
+    description: "Store bilingual topic, study focus, and coherence flag for a chunk.",
     inputSchema: {
       chunk_id: z.number().int(),
       topic_fa: z.string(),
       topic_en: z.string(),
+      study_focus_fa: z.string(),
+      study_focus_en: z.string(),
       coherence: z.enum(["confident", "needs_review"]),
       reason: z.string().optional(),
       output_dir: outDir,
     },
     annotations: { readOnlyHint: false, openWorldHint: false },
   },
-  async ({ chunk_id, topic_fa, topic_en, coherence, reason, output_dir }) => {
+  async ({ chunk_id, topic_fa, topic_en, study_focus_fa, study_focus_en, coherence, reason, output_dir }) => {
     const args = [
       "commit-analysis",
       "--chunk-id", String(chunk_id),
       "--topic-fa", topic_fa,
       "--topic-en", topic_en,
+      "--study-focus-fa", study_focus_fa,
+      "--study-focus-en", study_focus_en,
       "--coherence", coherence,
       "--reason", reason || "",
     ];

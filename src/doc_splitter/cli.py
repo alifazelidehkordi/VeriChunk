@@ -193,6 +193,8 @@ def cmd_commit_analysis(args: argparse.Namespace) -> int:
         args.chunk_id,
         topic_fa=args.topic_fa,
         topic_en=args.topic_en,
+        study_focus_fa=args.study_focus_fa,
+        study_focus_en=args.study_focus_en,
         coherence=args.coherence,
         reason=args.reason,
     )
@@ -254,6 +256,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_ca.add_argument("--chunk-id", type=int, required=True)
     p_ca.add_argument("--topic-fa", required=True)
     p_ca.add_argument("--topic-en", required=True)
+    p_ca.add_argument("--study-focus-fa", required=True)
+    p_ca.add_argument("--study-focus-en", required=True)
     p_ca.add_argument("--coherence", choices=["confident", "needs_review"], required=True)
     p_ca.add_argument("--reason", default="")
     p_ca.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")

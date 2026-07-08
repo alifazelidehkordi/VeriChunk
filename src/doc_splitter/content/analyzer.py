@@ -79,6 +79,8 @@ def commit_chunk_analysis(
     *,
     topic_fa: str,
     topic_en: str,
+    study_focus_fa: str,
+    study_focus_en: str,
     coherence: Literal["confident", "needs_review"],
     reason: str = "",
 ) -> dict[str, Any]:
@@ -86,6 +88,8 @@ def commit_chunk_analysis(
     session.chunk_analyses[str(chunk_id)] = {
         "topic_fa": topic_fa,
         "topic_en": topic_en,
+        "study_focus_fa": study_focus_fa,
+        "study_focus_en": study_focus_en,
         "coherence": coherence,
         "reason": reason,
     }

@@ -91,11 +91,15 @@ def run_generate_index(config: SplitConfig) -> tuple[Path, Path]:
 
     total = json.loads(manifest_chunks).get("total_chunks", 0)
     for i in range(1, total + 1):
-        if str(i) not in session.chunk_analyses:
+        analysis = session.chunk_analyses.get(str(i))
+        if not analysis:
+            missing.append(i)
+            continue
+        if not analysis.get("study_focus_fa") or not analysis.get("study_focus_en"):
             missing.append(i)
     if missing:
         raise PipelineError(
-            f"Missing content analyses for chunks: {missing}. "
+            f"Missing content analyses (including study_focus) for chunks: {missing}. "
             "Use get_chunk_analysis_context / commit_chunk_analysis first."
         )
     paths = generate_study_indexes(config.output_dir, config)

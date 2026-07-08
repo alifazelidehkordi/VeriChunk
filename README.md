@@ -42,9 +42,13 @@ doc-splitter write --out ./output
 # 4. Per-chunk content analysis (host agent reads context, commits analysis)
 doc-splitter analysis-context --out ./output --chunk-id 1
 doc-splitter commit-analysis --out ./output --chunk-id 1 \
-  --topic-fa "..." --topic-en "..." --coherence confident
+  --topic-fa "عنوان کوتاه جلسه" \
+  --topic-en "Short session title" \
+  --study-focus-fa "۱–۲ خط تمرکز آموزشی: مفاهیم و کاربردها" \
+  --study-focus-en "1-2 line educational focus: concepts and applications" \
+  --coherence confident
 
-# 5. Generate indexes
+# 5. Generate rich study indexes (Overview + chapter table + Study Focus per session)
 doc-splitter index --out ./output
 ```
 
@@ -82,10 +86,19 @@ output/
 ├── manifest.json             # semantic filenames, source_pages, pdf_pages
 ├── verification-report.json
 ├── semantic-review-report.json
-├── study-index-fa.md
+├── study-index-fa.md         # rich index: Overview, chapter summary, Study Focus
 ├── study-index-en.md
 └── .split-session.json
 ```
+
+### Study index structure
+
+Each `study-index-*.md` includes:
+
+1. **Overview** — session count, PDF page coverage, total study time
+2. **Chapter summary table** — groups, session ranges, pages, estimated time
+3. **Suggested study workflow** — 5-step study method
+4. **Per-chapter session tables** — topic links + **Study Focus** column (from `study_focus_fa` / `study_focus_en`)
 
 ### Output format options
 
