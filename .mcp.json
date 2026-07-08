@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "doc-splitter": {
+      "command": "node",
+      "args": ["server.js"],
+      "cwd": "/home/ali/Desktop/ducsplit"
+    }
+  }
+}

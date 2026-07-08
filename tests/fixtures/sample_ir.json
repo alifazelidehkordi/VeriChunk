@@ -1,0 +1,18 @@
+{
+  "elements": [
+    {"id": "el-001", "type": "heading", "level": 1, "text": "Chapter One", "word_count": 2, "cumulative_word_count": 2},
+    {"id": "el-002", "type": "paragraph", "text": "First paragraph with some words.", "word_count": 6, "cumulative_word_count": 8},
+    {"id": "el-003", "type": "heading", "level": 2, "text": "Section A", "word_count": 2, "cumulative_word_count": 10},
+    {"id": "el-004", "type": "paragraph", "text": "Second paragraph continues the topic.", "word_count": 6, "cumulative_word_count": 16},
+    {"id": "el-005", "type": "table", "rows": [["A", "B"], ["1", "2"]], "word_count": 4, "cumulative_word_count": 20},
+    {"id": "el-006", "type": "heading", "level": 1, "text": "Chapter Two", "word_count": 2, "cumulative_word_count": 22},
+    {"id": "el-007", "type": "paragraph", "text": "New chapter content here.", "word_count": 4, "cumulative_word_count": 26}
+  ],
+  "meta": {
+    "source_file": "sample.pdf",
+    "total_word_count": 26,
+    "estimated_total_pages": 1,
+    "skipped_pages": [],
+    "reconciliation_notes": []
+  }
+}
