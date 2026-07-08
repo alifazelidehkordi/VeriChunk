@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 
 from doc_splitter.boundary.planner import (
@@ -12,7 +11,7 @@ from doc_splitter.boundary.planner import (
     load_session,
     save_session,
 )
-from doc_splitter.config import SplitConfig
+from doc_splitter.config import SplitConfig, config_from_dict, config_to_dict
 from doc_splitter.content.analyzer import commit_chunk_analysis, get_chunk_analysis_context
 from doc_splitter.format_detector import InputFormat, detect_format
 from doc_splitter.index_generator import generate_study_indexes
@@ -27,19 +26,9 @@ class PipelineError(RuntimeError):
     pass
 
 
-def _config_to_dict(config: SplitConfig) -> dict:
-    data = asdict(config)
-    data["output_dir"] = str(config.output_dir)
-    return data
-
-
-def _config_from_dict(data: dict) -> SplitConfig:
-    output_dir = Path(data.pop("output_dir", "output"))
-    return SplitConfig(output_dir=output_dir, **data)
-
-
 def parse_document(input_path: Path, config: SplitConfig) -> DocumentIR:
     input_path = input_path.expanduser().resolve()
+    config.source_path = input_path
     config.output_dir.mkdir(parents=True, exist_ok=True)
     images_dir = config.output_dir / "images" if config.image_extraction else None
 
@@ -57,7 +46,7 @@ def init_session(input_path: Path, config: SplitConfig) -> SplitSession:
     session = SplitSession(
         source_file=input_path.name,
         output_dir=str(config.output_dir.resolve()),
-        config=_config_to_dict(config),
+        config=config_to_dict(config),
         stage="boundary",
     )
     save_session(session, config.output_dir)
@@ -66,7 +55,24 @@ def init_session(input_path: Path, config: SplitConfig) -> SplitSession:
 
 def run_write_and_verify(ir: DocumentIR, config: SplitConfig) -> dict:
     session = load_session(config.output_dir)
-    write_chunks(ir, session, config, config.output_dir)
+    session_cfg = session.config
+    if config.source_path is None and session_cfg.get("source_path"):
+        config.source_path = Path(session_cfg["source_path"])
+
+    input_format = None
+    if config.source_path:
+        try:
+            input_format = detect_format(config.source_path)
+        except Exception:
+            pass
+
+    write_chunks(
+        ir,
+        session,
+        config,
+        config.output_dir,
+        input_format=input_format,
+    )
     report = verify_output(ir, config.output_dir, config)
     if not report["passed"]:
         raise PipelineError(

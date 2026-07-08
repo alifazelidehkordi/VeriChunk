@@ -30,6 +30,15 @@ def _page_label(start: int | None, end: int | None) -> str:
     return f"{start}–{end}"
 
 
+def _chunk_page_label(chunk: dict) -> str:
+    source_pages = chunk.get("source_pages") or []
+    if source_pages:
+        if len(source_pages) == 1:
+            return str(source_pages[0])
+        return f"{source_pages[0]}–{source_pages[-1]}"
+    return _page_label(chunk.get("start_page"), chunk.get("end_page"))
+
+
 def generate_study_indexes(output_dir: Path, config: SplitConfig) -> tuple[Path, Path]:
     manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
     session = load_session(output_dir)
@@ -86,7 +95,7 @@ def _render_index(
             lines.append(f"- تعداد فصل‌های مفهومی: {len(chapters)}")
         lines.append(f"- زمان تقریبی کل مطالعه: {_format_duration(total_minutes, lang)}")
         lines.extend(["", "## فهرست فصل‌ها و بخش‌ها", ""])
-        header = "| # | عنوان بخش | موضوع | صفحات منبع اصلی | زمان تقریبی مطالعه |"
+        header = "| # | فایل | عنوان بخش | موضوع | صفحات منبع | زمان تقریبی |"
     else:
         lines = [f"# Study Index — {source}", "", "## Overview", ""]
         lines.append(f"- Total study sessions: {len(chunks)}")
@@ -94,20 +103,21 @@ def _render_index(
             lines.append(f"- Conceptual chapters: {len(chapters)}")
         lines.append(f"- Estimated total study time: {_format_duration(total_minutes, lang)}")
         lines.extend(["", "## Chapters and Sections", ""])
-        header = "| # | Section Title | Topic | Source Pages | Est. Study Time |"
+        header = "| # | File | Section Title | Topic | Source Pages | Est. Study Time |"
 
     lines.append(header)
-    lines.append("|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|")
 
     def row(chunk: dict) -> str:
         cid = chunk["id"]
         analysis = session.chunk_analyses.get(str(cid), {})
         topic = analysis.get(f"topic_{lang}", analysis.get("topic_en", "—"))
-        pages = _page_label(chunk.get("start_page"), chunk.get("end_page"))
+        pages = _chunk_page_label(chunk)
         mins = chunk.get("estimated_minutes", 1)
         time_label = f"~{mins} دقیقه" if lang == "fa" else f"~{mins} min"
         title = chunk.get("title", "—")
-        return f"| {cid} | {title} | {topic} | {pages} | {time_label} |"
+        filename = chunk.get("file", "—")
+        return f"| {cid} | {filename} | {title} | {topic} | {pages} | {time_label} |"
 
     if use_chapters:
         chapter_num = 0

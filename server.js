@@ -46,6 +46,8 @@ const server = new McpServer({ name: "doc-splitter", version: "0.1.0" });
 const outDir = z.string().optional().describe("Output directory (default: output)");
 const minPages = z.number().int().optional();
 const maxPages = z.number().int().optional();
+const outputFormat = z.enum(["markdown", "pdf", "both"]).optional();
+const overlapPages = z.number().int().optional();
 
 server.registerTool(
   "split_document",
@@ -57,14 +59,18 @@ server.registerTool(
       min_pages: minPages,
       max_pages: maxPages,
       output_dir: outDir,
+      output_format: outputFormat,
+      overlap_pages: overlapPages,
     },
     annotations: { readOnlyHint: false, openWorldHint: false },
   },
-  async ({ file_path, min_pages, max_pages, output_dir }) => {
+  async ({ file_path, min_pages, max_pages, output_dir, output_format, overlap_pages }) => {
     const args = ["run", "--input", file_path];
     if (min_pages) args.push("--min-pages", String(min_pages));
     if (max_pages) args.push("--max-pages", String(max_pages));
     if (output_dir) args.push("--out", output_dir);
+    if (output_format) args.push("--output-format", output_format);
+    if (overlap_pages !== undefined) args.push("--overlap-pages", String(overlap_pages));
     const out = await runCli(args);
     const data = parseJsonOutput(out);
     return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
@@ -129,7 +135,7 @@ server.registerTool(
   "get_chunk",
   {
     title: "Get chunk",
-    description: "Read a chunk markdown file by numeric id.",
+    description: "Read chunk content by numeric id (Markdown or extracted PDF text).",
     inputSchema: {
       chunk_id: z.number().int(),
       output_dir: outDir,
@@ -137,10 +143,10 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
   async ({ chunk_id, output_dir }) => {
-    const dir = output_dir || "output";
-    const file = path.join(ROOT, dir, `chunk-${String(chunk_id).padStart(3, "0")}.md`);
-    const text = await readFile(file, "utf8");
-    return { content: [{ type: "text", text }] };
+    const args = ["get-chunk", "--chunk-id", String(chunk_id)];
+    if (output_dir) args.push("--out", output_dir);
+    const out = await runCli(args);
+    return { content: [{ type: "text", text: out }] };
   },
 );
 

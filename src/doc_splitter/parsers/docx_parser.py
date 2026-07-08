@@ -118,6 +118,12 @@ def parse_docx(path: Path, config: SplitConfig, images_dir: Path | None = None) 
     meta = DocumentMeta(source_file=path.name)
     ir = DocumentIR(elements=elements, meta=meta)
     ir.recompute_word_counts()
+    for el in ir.elements:
+        if el.page_number is None:
+            prior = el.cumulative_word_count - el.word_count
+            el.page_number = max(
+                1, (prior + config.words_per_page - 1) // config.words_per_page
+            )
     meta.estimated_total_pages = max(
         1, (meta.total_word_count + config.words_per_page - 1) // config.words_per_page
     )

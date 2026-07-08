@@ -22,8 +22,26 @@ class StructureInfo:
     element_pages: dict[str, int]
 
 
+@dataclass
+class ChunkPageRange:
+    start_page: int
+    end_page: int
+    overlap_prev: list[int]
+    overlap_next: list[int]
+    source_pages: list[int]
+    pdf_pages: list[int]
+
+
 def _estimate_page(word_position: int, config: SplitConfig) -> int:
     return max(1, (word_position + config.words_per_page - 1) // config.words_per_page)
+
+
+def element_page_number(el: Element, config: SplitConfig) -> int | None:
+    page = el.resolved_page_number()
+    if page is not None:
+        return page
+    prior = el.cumulative_word_count - el.word_count
+    return _estimate_page(prior, config)
 
 
 def analyze_structure(ir: DocumentIR, config: SplitConfig) -> StructureInfo:
@@ -33,11 +51,9 @@ def analyze_structure(ir: DocumentIR, config: SplitConfig) -> StructureInfo:
     stack: list[HeadingNode] = []
 
     for el in ir.elements:
-        if el.page is not None:
-            element_pages[el.id] = el.page
-        else:
-            prior = el.cumulative_word_count - el.word_count
-            element_pages[el.id] = _estimate_page(prior, config)
+        page = element_page_number(el, config)
+        if page is not None:
+            element_pages[el.id] = page
 
         if el.type != "heading" or el.level is None:
             continue
@@ -78,3 +94,96 @@ def page_range_for_elements(
     if not pages:
         return None, None
     return min(pages), max(pages)
+
+
+def _pages_for_indices(
+    ir: DocumentIR,
+    start_idx: int,
+    end_idx: int,
+    element_pages: dict[str, int],
+) -> list[int]:
+    pages: set[int] = set()
+    for el in ir.elements[start_idx : end_idx + 1]:
+        page = element_pages.get(el.id)
+        if page is not None:
+            pages.add(page)
+    return sorted(pages)
+
+
+def _boundary_page_shared(
+    ir: DocumentIR,
+    end_idx: int,
+    element_pages: dict[str, int],
+) -> int | None:
+    if end_idx >= len(ir.elements) - 1:
+        return None
+    end_page = element_pages.get(ir.elements[end_idx].id)
+    next_page = element_pages.get(ir.elements[end_idx + 1].id)
+    if end_page is not None and next_page == end_page:
+        return end_page
+    return None
+
+
+def compute_chunk_page_ranges(
+    ir: DocumentIR,
+    ranges: list[tuple[int, int]],
+    config: SplitConfig,
+) -> list[ChunkPageRange]:
+    structure = analyze_structure(ir, config)
+    element_pages = structure.element_pages
+    overlap_n = max(0, config.overlap_boundary_pages)
+    result: list[ChunkPageRange] = []
+
+    for i, (start_idx, end_idx) in enumerate(ranges):
+        source_pages = _pages_for_indices(ir, start_idx, end_idx, element_pages)
+        if not source_pages:
+            result.append(
+                ChunkPageRange(0, 0, [], [], [], [])
+            )
+            continue
+
+        start_page = source_pages[0]
+        end_page = source_pages[-1]
+        overlap_prev: list[int] = []
+        overlap_next: list[int] = []
+
+        shared = _boundary_page_shared(ir, end_idx, element_pages)
+        if shared is not None:
+            overlap_next.append(shared)
+
+        if i > 0:
+            prev_end = ranges[i - 1][1]
+            prev_shared = _boundary_page_shared(ir, prev_end, element_pages)
+            if prev_shared is not None and prev_shared not in overlap_prev:
+                overlap_prev.append(prev_shared)
+
+        pdf_pages = set(range(start_page, end_page + 1))
+        for p in overlap_prev:
+            pdf_pages.add(p)
+            for offset in range(1, overlap_n + 1):
+                if p - offset >= 1:
+                    pdf_pages.add(p - offset)
+        for p in overlap_next:
+            pdf_pages.add(p)
+            for offset in range(1, overlap_n + 1):
+                pdf_pages.add(p + offset)
+
+        if i + 1 < len(ranges):
+            next_start_pages = _pages_for_indices(
+                ir, ranges[i + 1][0], ranges[i + 1][0], element_pages
+            )
+            if next_start_pages:
+                pdf_pages.add(next_start_pages[0])
+
+        result.append(
+            ChunkPageRange(
+                start_page=start_page,
+                end_page=end_page,
+                overlap_prev=sorted(overlap_prev),
+                overlap_next=sorted(overlap_next),
+                source_pages=source_pages,
+                pdf_pages=sorted(pdf_pages),
+            )
+        )
+
+    return result

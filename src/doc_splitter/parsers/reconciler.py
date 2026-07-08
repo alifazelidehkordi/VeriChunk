@@ -43,7 +43,7 @@ def _best_layout_match(
         if layout.rows and element.type == "table":
             layout_text = " ".join(" ".join(r) for r in layout.rows)
         score = _match_score(target, layout_text)
-        if element.page and layout.page == element.page:
+        if element.page_number and layout.page == element.page_number:
             score += 0.1
         if score > best_score:
             best_score = score
@@ -64,7 +64,7 @@ def reconcile_pdf_ir(ir: DocumentIR, layouts: list[LayoutElement]) -> DocumentIR
         if match is None:
             continue
 
-        element.page = match.page
+        element.page_number = match.page
         element.bbox = BBox(
             x0=match.x0,
             y0=match.y0,

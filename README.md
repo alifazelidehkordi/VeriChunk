@@ -27,6 +27,9 @@ The host agent (Cursor/Grok) drives LLM steps — boundary detection and content
 # 1. Parse and start boundary session
 doc-splitter run --input book.pdf --out ./output --min-pages 5 --max-pages 10
 
+# PDF-native chunks (page extract with boundary overlap)
+doc-splitter run --input book.pdf --out ./output --output-format pdf --overlap-pages 1
+
 # 2. Loop until status=complete
 doc-splitter boundary-context --out ./output
 doc-splitter commit-boundary --out ./output --action cut --element-id el-042 --reason "..."
@@ -57,12 +60,23 @@ Tools: `split_document`, `get_boundary_context`, `commit_boundary`, `write_chunk
 
 ```
 output/
-├── chunk-001.md
+├── 01_topic-slug.md          # or .pdf when --output-format pdf|both
+├── 02_another-topic.pdf
 ├── images/
-├── manifest.json
+├── manifest.json             # semantic filenames, source_pages, pdf_pages
 ├── verification-report.json
 ├── semantic-review-report.json
 ├── study-index-fa.md
 ├── study-index-en.md
 └── .split-session.json
 ```
+
+### Output format options
+
+| `--output-format` | Behavior |
+|---|---|
+| `markdown` (default) | Semantic `{NN}_{slug}.md` chunks |
+| `pdf` | PyMuPDF page extract per chunk (PDF inputs only) |
+| `both` | Writes both `.md` and `.pdf` per chunk |
+
+`--overlap-pages N` adds N extra pages at shared boundaries so mid-page topics are not lost.

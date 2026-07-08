@@ -52,10 +52,26 @@ class Element:
     items: list[str] = field(default_factory=list)
     ref: str | None = None
     caption: str | None = None
-    page: int | None = None
+    page_number: int | None = None
     bbox: BBox | None = None
     word_count: int = 0
     cumulative_word_count: int = 0
+
+    @property
+    def page(self) -> int | None:
+        """Backward-compatible alias for page_number."""
+        return self.page_number
+
+    @page.setter
+    def page(self, value: int | None) -> None:
+        self.page_number = value
+
+    def resolved_page_number(self) -> int | None:
+        if self.page_number is not None:
+            return self.page_number
+        if self.bbox is not None:
+            return self.bbox.page
+        return None
 
     def compute_word_count(self) -> int:
         if self.type == "table":
@@ -84,17 +100,16 @@ class Element:
             data["ref"] = self.ref
             if self.caption:
                 data["caption"] = self.caption
-        if self.page is not None:
-            data["page"] = self.page
-        if self.bbox is not None:
-            data["bbox"] = self.bbox.to_dict()
+        data["page_number"] = self.page_number
+        data["bbox"] = self.bbox.to_dict() if self.bbox is not None else None
         data["word_count"] = self.word_count
         data["cumulative_word_count"] = self.cumulative_word_count
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Element:
-        el = cls(
+        page_number = data.get("page_number", data.get("page"))
+        return cls(
             id=str(data["id"]),
             type=data["type"],
             text=data.get("text", ""),
@@ -103,12 +118,11 @@ class Element:
             items=data.get("items", []),
             ref=data.get("ref"),
             caption=data.get("caption"),
-            page=data.get("page"),
+            page_number=int(page_number) if page_number is not None else None,
             bbox=BBox.from_dict(data["bbox"]) if data.get("bbox") else None,
             word_count=int(data.get("word_count", 0)),
             cumulative_word_count=int(data.get("cumulative_word_count", 0)),
         )
-        return el
 
 
 @dataclass

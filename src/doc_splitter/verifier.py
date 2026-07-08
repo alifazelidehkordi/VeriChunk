@@ -12,12 +12,6 @@ from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import save_json
 
 TABLE_ROW_RE = re.compile(r"^\|(.+)\|$")
-IMAGE_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
-
-
-def _parse_chunk_element_ids(chunk_path: Path) -> list[str]:
-    """Element IDs are tracked via manifest; chunks don't embed IDs."""
-    return []
 
 
 def verify_output(
@@ -31,6 +25,7 @@ def verify_output(
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     chunks = manifest.get("chunks", [])
+    output_format = manifest.get("output_format", config.output_format)
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -38,7 +33,7 @@ def verify_output(
     expected_ids = [
         el.id
         for el in ir.elements
-        if el.page is None or el.page not in skipped_pages
+        if el.page_number is None or el.page_number not in skipped_pages
     ]
     found_ids: list[str] = []
     chunk_word_total = 0
@@ -50,6 +45,10 @@ def verify_output(
             continue
         found_ids.extend(chunk.get("element_ids", []))
         chunk_word_total += int(chunk.get("word_count", 0))
+
+        is_markdown = chunk["file"].endswith(".md")
+        if not is_markdown:
+            continue
 
         content = chunk_file.read_text(encoding="utf-8")
         for el_id in chunk.get("element_ids", []):
@@ -91,6 +90,22 @@ def verify_output(
             f"Word count mismatch: chunks={chunk_word_total}, ir={ir.meta.total_word_count}, "
             f"diff={word_diff}, tolerance={tolerance}"
         )
+
+    if output_format in ("pdf", "both"):
+        covered_pages: set[int] = set()
+        for chunk in chunks:
+            for page in chunk.get("pdf_pages", chunk.get("source_pages", [])):
+                if page not in skipped_pages:
+                    covered_pages.add(page)
+        expected_doc_pages = set(
+            range(1, ir.meta.estimated_total_pages + 1)
+        ) - skipped_pages
+        missing_pages = sorted(expected_doc_pages - covered_pages)
+        if missing_pages:
+            errors.append(
+                f"PDF page coverage gap (non-skipped pages missing from chunk PDFs): {missing_pages[:20]}"
+                + ("..." if len(missing_pages) > 20 else "")
+            )
 
     if skipped_pages:
         warnings.append(
