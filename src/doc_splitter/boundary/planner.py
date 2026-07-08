@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from doc_splitter.boundary.safe_candidates import SafeCandidate, candidates_in_word_window
+from doc_splitter.boundary.safe_candidates import (
+    SafeCandidate,
+    candidates_in_word_window,
+    find_safe_candidates,
+)
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import load_json, save_json
@@ -112,6 +116,12 @@ def get_boundary_context(
         end_index, candidates = candidates_in_word_window(
             ir, session.cursor_index, window_words, 0
         )
+
+    if not candidates:
+        tail_end = len(ir.elements) - 2
+        if tail_end >= session.cursor_index:
+            end_index = max(end_index, tail_end)
+            candidates = find_safe_candidates(ir, session.cursor_index, tail_end)
 
     start_page, _ = page_range_for_elements(
         ir, session.cursor_index, end_index, structure.element_pages

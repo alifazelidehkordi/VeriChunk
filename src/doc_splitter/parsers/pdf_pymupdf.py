@@ -12,6 +12,7 @@ from typing import Any
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, DocumentMeta, Element, SkippedPage
 from doc_splitter.parsers._ids import next_element_id
+from doc_splitter.section_titles import BOLD_ONLY_RE, looks_like_section_title, normalize_title_text
 
 HEADING_MD_RE = re.compile(r"^(#{1,3})\s+(.+)$")
 TABLE_ROW_RE = re.compile(r"^\|(.+)\|$")
@@ -56,7 +57,7 @@ def _parse_markdown_lines(
         if not text:
             return
         el_id, counter = next_element_id(counter)
-        elements.append(Element(id=el_id, type="paragraph", text=text, page=page))
+        elements.append(Element(id=el_id, type="paragraph", text=text, page_number=page))
 
     def flush_list() -> None:
         nonlocal counter
@@ -65,7 +66,7 @@ def _parse_markdown_lines(
         items = list_buf[:]
         list_buf.clear()
         el_id, counter = next_element_id(counter)
-        elements.append(Element(id=el_id, type="list", items=items, page=page))
+        elements.append(Element(id=el_id, type="list", items=items, page_number=page))
 
     def flush_table() -> None:
         nonlocal counter
@@ -75,7 +76,7 @@ def _parse_markdown_lines(
         table_buf.clear()
         if len(rows) >= 1:
             el_id, counter = next_element_id(counter)
-            elements.append(Element(id=el_id, type="table", rows=rows, page=page))
+            elements.append(Element(id=el_id, type="table", rows=rows, page_number=page))
 
     for raw in lines:
         line = raw.rstrip()
@@ -84,6 +85,25 @@ def _parse_markdown_lines(
             flush_list()
             flush_table()
             continue
+
+        bold_only = BOLD_ONLY_RE.match(line.strip())
+        if bold_only:
+            flush_paragraph()
+            flush_list()
+            flush_table()
+            title = normalize_title_text(bold_only.group(1))
+            if title and looks_like_section_title(f"**{title}**"):
+                el_id, counter = next_element_id(counter)
+                elements.append(
+                    Element(
+                        id=el_id,
+                        type="heading",
+                        level=2,
+                        text=title,
+                        page_number=page,
+                    )
+                )
+                continue
 
         heading = HEADING_MD_RE.match(line)
         if heading:
@@ -98,7 +118,7 @@ def _parse_markdown_lines(
                     type="heading",
                     level=min(level, 3),
                     text=heading.group(2).strip(),
-                    page=page,
+                    page_number=page,
                 )
             )
             continue
@@ -131,7 +151,7 @@ def _parse_markdown_lines(
                     ref = f"images/{dest_name}"
             el_id, counter = next_element_id(counter)
             elements.append(
-                Element(id=el_id, type="image", ref=ref, caption=caption or None, page=page)
+                Element(id=el_id, type="image", ref=ref, caption=caption or None, page_number=page)
             )
             continue
 
@@ -205,7 +225,7 @@ def parse_pdf_pymupdf(
                 if page > 0:
                     skipped.append(
                         SkippedPage(
-                            page=page,
+                            page_number=page,
                             reason="ocr_required_out_of_scope",
                         )
                     )

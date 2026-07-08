@@ -14,6 +14,9 @@ SKIP_TITLES = {
 SECTION_TITLE_RE = re.compile(
     r"^[A-Z][A-Z0-9 ,–\-/&()']{11,}$"
 )
+TITLE_MARKUP_RE = re.compile(r"\*\*|__|</?u>|</?mark>")
+HTML_TAG_RE = re.compile(r"<[^>]+>")
+BOLD_ONLY_RE = re.compile(r"^\*\*(.+)\*\*$")
 LAB_KEYWORD_RE = re.compile(
     r"\b(INTRODUCTION|LABORATORY|DIAGNOSIS|INVESTIGATIONS|ASSESSING|DISORDERS|DISEASES)\b",
     re.IGNORECASE,
@@ -21,7 +24,14 @@ LAB_KEYWORD_RE = re.compile(
 
 TOPIC_MAX_WORDS = 14
 TOPIC_MAX_CHARS = 100
+TOPIC_PICK_MAX_CHARS = 90
 FOCUS_MIN_CHARS = 30
+
+
+def normalize_title_text(text: str) -> str:
+    t = HTML_TAG_RE.sub("", text)
+    t = TITLE_MARKUP_RE.sub("", t)
+    return " ".join(t.split()).strip()
 
 
 def _upper_ratio(text: str) -> float:
@@ -32,8 +42,18 @@ def _upper_ratio(text: str) -> float:
 
 
 def looks_like_section_title(text: str) -> bool:
-    t = text.strip()
+    raw = text.strip()
+    bold = BOLD_ONLY_RE.match(raw)
+    if bold:
+        raw = bold.group(1).strip()
+    t = normalize_title_text(raw)
     if not t or t.lower() in SKIP_TITLES:
+        return False
+    if t.startswith("•") or t[0].islower():
+        return False
+    if " rarely " in t.lower() or "edition" in t.lower():
+        return False
+    if len(t.split()) == 1 and len(t) < 20:
         return False
     if len(t) < 12 or len(t) > 140:
         return False
@@ -74,13 +94,30 @@ def looks_like_body_sentence(text: str) -> bool:
     return False
 
 
+def _clean_title_candidate(text: str) -> str | None:
+    raw = text.strip()
+    bold = BOLD_ONLY_RE.match(raw)
+    if bold:
+        raw = bold.group(1).strip()
+    cleaned = normalize_title_text(raw)
+    if not cleaned or cleaned.lower() in SKIP_TITLES:
+        return None
+    return cleaned
+
+
 def _heading_text(el: Element) -> str | None:
     if el.type != "heading" or not el.text.strip():
         return None
-    text = el.text.strip()
-    if text.lower() in SKIP_TITLES:
+    cleaned = _clean_title_candidate(el.text)
+    if not cleaned:
         return None
-    return text
+    if looks_like_section_title(el.text):
+        return cleaned
+    if LAB_KEYWORD_RE.search(cleaned):
+        return cleaned
+    if _upper_ratio(cleaned) >= 0.6 and len(cleaned) >= 20:
+        return cleaned
+    return None
 
 
 def _paragraph_section_text(el: Element) -> str | None:
@@ -88,17 +125,20 @@ def _paragraph_section_text(el: Element) -> str | None:
         return None
     text = el.text.strip()
     if looks_like_section_title(text):
-        return text
+        return _clean_title_candidate(text)
     return None
 
 
 def _section_title_score(text: str, *, styled_heading: bool) -> int:
-    if text.lower() in SKIP_TITLES:
+    cleaned = normalize_title_text(text)
+    if cleaned.lower() in SKIP_TITLES:
         return -1
-    if styled_heading:
-        score = 40
-    elif looks_like_section_title(text):
-        score = 0
+    if looks_like_section_title(text):
+        score = 40 if styled_heading else 30
+    elif styled_heading and LAB_KEYWORD_RE.search(cleaned):
+        score = 35
+    elif styled_heading and _upper_ratio(cleaned) >= 0.6 and len(cleaned) >= 20:
+        score = 25
     else:
         return -1
     if LAB_KEYWORD_RE.search(text):
@@ -115,8 +155,9 @@ def list_section_headings(ir: DocumentIR, start_idx: int, end_idx: int) -> list[
     seen: set[str] = set()
     for el in ir.elements[start_idx : end_idx + 1]:
         candidates: list[tuple[str, bool]] = []
-        if el.type == "heading" and el.text.strip():
-            candidates.append((el.text.strip(), True))
+        heading = _heading_text(el)
+        if heading:
+            candidates.append((heading, True))
         elif el.type == "paragraph":
             text = _paragraph_section_text(el)
             if text:
@@ -136,8 +177,9 @@ def infer_chunk_topic(ir: DocumentIR, start_idx: int, end_idx: int) -> str:
     best_score = -1
     for el in ir.elements[start_idx : end_idx + 1]:
         candidates: list[tuple[str, bool]] = []
-        if el.type == "heading" and el.text.strip():
-            candidates.append((el.text.strip(), True))
+        heading = _heading_text(el)
+        if heading:
+            candidates.append((heading, True))
         elif el.type == "paragraph":
             text = _paragraph_section_text(el)
             if text:
@@ -150,8 +192,31 @@ def infer_chunk_topic(ir: DocumentIR, start_idx: int, end_idx: int) -> str:
     return best
 
 
+def pick_best_topic(
+    headings: list[str],
+    *,
+    max_chars: int = TOPIC_PICK_MAX_CHARS,
+) -> str:
+    best = ""
+    best_score = -1
+    for order, heading in enumerate(headings):
+        cleaned = normalize_title_text(heading)
+        if not cleaned or len(cleaned) > max_chars:
+            continue
+        if looks_like_body_sentence(cleaned):
+            continue
+        score = _section_title_score(heading, styled_heading=False)
+        if score < 0:
+            continue
+        score += max(0, 10 - order)
+        if score > best_score:
+            best_score = score
+            best = cleaned
+    return best
+
+
 def validate_topic(text: str, *, field: str = "topic") -> None:
-    t = text.strip()
+    t = normalize_title_text(text)
     if not t:
         raise ValueError(f"{field} must not be empty.")
     if len(t) > TOPIC_MAX_CHARS:

@@ -5,6 +5,8 @@ from doc_splitter.section_titles import (
     infer_chunk_topic,
     list_section_headings,
     looks_like_section_title,
+    normalize_title_text,
+    pick_best_topic,
     validate_analysis,
     validate_topic,
 )
@@ -43,6 +45,23 @@ def test_infer_chunk_topic_from_paragraph_section_titles():
 def test_validate_topic_rejects_sentence_like_title():
     with pytest.raises(ValueError, match="body sentence"):
         validate_topic("HeFH is the most frequent genetic disease.")
+
+
+def test_normalize_title_text_strips_pdf_markdown():
+    assert (
+        normalize_title_text("**INTRODUCTION – CLINICAL BIOCHEMISTRY**")
+        == "INTRODUCTION – CLINICAL BIOCHEMISTRY"
+    )
+    assert normalize_title_text("<u>Biological samples:</u>") == "Biological samples:"
+
+
+def test_pick_best_topic_skips_overlong_pdf_heading():
+    headings = [
+        "INTRODUCTION – CLINICAL BIOCHEMISTRY",
+        "LABORATORY INVESTIGATIONS AIMED AT ASSESSING THE FUNCTIONAL / STRUCTURAL INTEGRITY OF THE PANCREAS",
+        "placed on the needle (both before and after blood withdrawal).",
+    ]
+    assert pick_best_topic(headings) == "INTRODUCTION – CLINICAL BIOCHEMISTRY"
 
 
 def test_validate_analysis_accepts_proper_fields():
