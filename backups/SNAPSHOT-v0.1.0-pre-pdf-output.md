@@ -20,14 +20,23 @@
 | `output/nvc/` | Nonviolent Communication (317 pp) | 21 |
 | `output/methodology2/` | Methodology 2.pdf (170 pp) | 13 |
 
+## Backup artifacts
+
+| Artifact | Path | Size |
+|----------|------|------|
+| Git tag | `v0.1.0-pre-pdf-output` (commit `b9a193b`) | source only |
+| Tarball (full, incl. `output/`) | `backups/ducsplit-v0.1.0-pre-pdf-output.tar.gz` | ~363 MB |
+| Tarball copy | `/home/ali/Desktop/ducsplit-backup-v0.1.0-pre-pdf-output.tar.gz` | same |
+
 ## Restore
 
 ```bash
-# From git tag
+# From git tag (source code only, no output/)
+cd /home/ali/Desktop/ducsplit
 git checkout v0.1.0-pre-pdf-output
 
-# From tarball
-tar -xzf backups/ducsplit-v0.1.0-pre-pdf-output.tar.gz -C /path/to/restore
+# From tarball (includes output/ test runs)
+tar -xzf backups/ducsplit-v0.1.0-pre-pdf-output.tar.gz -C /home/ali/Desktop
 ```
 
 ## Next planned changes (not in this snapshot)

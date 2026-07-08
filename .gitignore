@@ -7,3 +7,4 @@ output/
 *.egg-info/
 dist/
 build/
+backups/*.tar.gz
