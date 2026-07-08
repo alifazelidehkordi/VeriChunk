@@ -9,6 +9,7 @@ from pathlib import Path
 from doc_splitter.boundary.planner import SplitSession
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR
+from doc_splitter.section_titles import infer_chunk_topic
 
 MARKUP_RE = re.compile(r"</?mark>|</?u>|\*\*|__|#{1,6}\s*")
 NON_SLUG_RE = re.compile(r"[^\w\s-]", re.UNICODE)
@@ -32,18 +33,6 @@ def slugify(title: str, max_length: int = 60) -> str:
     return cleaned
 
 
-def _chunk_title(ir: DocumentIR, start_idx: int, end_idx: int) -> str:
-    for el in ir.elements[start_idx : end_idx + 1]:
-        if el.type == "heading" and el.text.strip():
-            return el.text.strip()
-    for el in ir.elements[start_idx : end_idx + 1]:
-        if el.type == "paragraph" and el.text.strip():
-            text = el.text.strip()
-            if len(text) > 10:
-                return text[:120]
-    return ""
-
-
 def resolve_chunk_names(
     ir: DocumentIR,
     session: SplitSession,
@@ -57,8 +46,9 @@ def resolve_chunk_names(
 
     for i, (start_idx, end_idx) in enumerate(ranges, start=1):
         analysis = session.chunk_analyses.get(str(i), {})
-        title = _chunk_title(ir, start_idx, end_idx)
-        slug_source = analysis.get("topic_en") or title or f"section-{i}"
+        inferred = infer_chunk_topic(ir, start_idx, end_idx)
+        display_title = analysis.get("topic_en") or inferred or f"Section {i}"
+        slug_source = analysis.get("topic_en") or inferred or f"section-{i}"
         slug = slugify(slug_source, config.slug_max_length) or f"section-{i}"
 
         base = f"{i:02d}_{slug}"
@@ -70,7 +60,15 @@ def resolve_chunk_names(
         used.add(candidate)
 
         filename = f"{candidate}.{ext}"
-        names.append({"id": str(i), "slug": slug, "file": filename, "title": title})
+        names.append(
+            {
+                "id": str(i),
+                "slug": slug,
+                "file": filename,
+                "title": display_title,
+                "inferred_topic": inferred,
+            }
+        )
 
     return names
 

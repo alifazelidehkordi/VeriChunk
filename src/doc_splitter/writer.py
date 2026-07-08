@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from doc_splitter.boundary.planner import SplitSession
@@ -10,10 +11,13 @@ from doc_splitter.config import SplitConfig
 from doc_splitter.format_detector import InputFormat, detect_format
 from doc_splitter.ir.models import DocumentIR
 from doc_splitter.naming import resolve_chunk_names
+from doc_splitter.section_titles import infer_chunk_topic, list_section_headings
 from doc_splitter.structure_analyzer import (
     active_h1_for_element,
     compute_chunk_page_ranges,
 )
+
+_CHUNK_FILE_RE = re.compile(r"^\d{2}_.+\.(md|pdf)$")
 from doc_splitter.writers.markdown_writer import write_markdown_chunks
 from doc_splitter.writers.pdf_writer import write_pdf_chunks
 
@@ -28,6 +32,16 @@ def _chunk_ranges(session: SplitSession, total_elements: int) -> list[tuple[int,
     if start < total_elements:
         ranges.append((start, total_elements - 1))
     return ranges
+
+
+def _cleanup_orphan_chunk_files(output_dir: Path, keep_files: set[str]) -> None:
+    for path in output_dir.iterdir():
+        if (
+            path.is_file()
+            and _CHUNK_FILE_RE.match(path.name)
+            and path.name not in keep_files
+        ):
+            path.unlink()
 
 
 def _validate_output_format(config: SplitConfig, input_format: InputFormat | None) -> None:
@@ -89,6 +103,8 @@ def write_chunks(
             "file": primary["file"],
             "slug": primary["slug"],
             "title": primary.get("title", ""),
+            "inferred_topic": infer_chunk_topic(ir, start_idx, end_idx),
+            "section_headings": list_section_headings(ir, start_idx, end_idx),
             "format": config.output_format,
             "element_ids": element_ids,
             "start_index": start_idx,
@@ -124,4 +140,11 @@ def write_chunks(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    keep_files = {c["file"] for c in manifest_chunks}
+    for c in manifest_chunks:
+        if c.get("markdown_file"):
+            keep_files.add(c["markdown_file"])
+        if c.get("pdf_file"):
+            keep_files.add(c["pdf_file"])
+    _cleanup_orphan_chunk_files(output_dir, keep_files)
     return manifest

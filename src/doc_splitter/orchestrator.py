@@ -16,7 +16,8 @@ from doc_splitter.content.analyzer import commit_chunk_analysis, get_chunk_analy
 from doc_splitter.format_detector import InputFormat, detect_format
 from doc_splitter.index_generator import generate_study_indexes
 from doc_splitter.ir.models import DocumentIR
-from doc_splitter.ir.serialize import save_ir
+from doc_splitter.ir.serialize import load_ir, save_ir
+from doc_splitter.section_titles import validate_analysis
 from doc_splitter.parsers import parse_docx, parse_pdf
 from doc_splitter.verifier import verify_output
 from doc_splitter.writer import write_chunks
@@ -97,11 +98,37 @@ def run_generate_index(config: SplitConfig) -> tuple[Path, Path]:
             continue
         if not analysis.get("study_focus_fa") or not analysis.get("study_focus_en"):
             missing.append(i)
+            continue
+        try:
+            validate_analysis(
+                topic_fa=analysis["topic_fa"],
+                topic_en=analysis["topic_en"],
+                study_focus_fa=analysis["study_focus_fa"],
+                study_focus_en=analysis["study_focus_en"],
+            )
+        except ValueError as exc:
+            raise PipelineError(
+                f"Chunk {i} has invalid content analysis: {exc}. "
+                "Re-run commit_chunk_analysis with a short section title and educational study_focus."
+            ) from exc
     if missing:
         raise PipelineError(
             f"Missing content analyses (including study_focus) for chunks: {missing}. "
             "Use get_chunk_analysis_context / commit_chunk_analysis first."
         )
+
+    ir = load_ir(config.output_dir / "ir.json")
+    session_cfg = session.config
+    if config.source_path is None and session_cfg.get("source_path"):
+        config.source_path = Path(session_cfg["source_path"])
+    input_format = None
+    if config.source_path:
+        try:
+            input_format = detect_format(config.source_path)
+        except Exception:
+            pass
+    write_chunks(ir, session, config, config.output_dir, input_format=input_format)
+
     paths = generate_study_indexes(config.output_dir, config)
     session.stage = "complete"
     save_session(session, config.output_dir)

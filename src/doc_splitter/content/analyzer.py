@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from doc_splitter.boundary.planner import SplitSession, load_session, save_session
-from doc_splitter.ir.serialize import save_json
+from doc_splitter.ir.serialize import load_ir, save_json
+from doc_splitter.section_titles import (
+    infer_chunk_topic,
+    list_section_headings,
+    validate_analysis,
+)
 
 
 def _chunk_read_path(output_dir: Path, chunk: dict) -> Path:
@@ -48,6 +53,12 @@ def get_chunk_analysis_context(
 
     content = read_chunk_content(output_dir, chunk)
 
+    ir = load_ir(output_dir / "ir.json")
+    start_idx = int(chunk.get("start_index", 0))
+    end_idx = int(chunk.get("end_index", start_idx))
+    section_headings = list_section_headings(ir, start_idx, end_idx)
+    provisional_topic = infer_chunk_topic(ir, start_idx, end_idx)
+
     prev_title = ""
     next_title = ""
     for c in chunks:
@@ -66,6 +77,8 @@ def get_chunk_analysis_context(
         "source_pages": chunk.get("source_pages", []),
         "pdf_pages": chunk.get("pdf_pages", []),
         "title": chunk.get("title", ""),
+        "section_headings": section_headings,
+        "provisional_topic": provisional_topic,
         "prev_chunk_title": prev_title,
         "next_chunk_title": next_title,
         "content": content,
@@ -84,6 +97,12 @@ def commit_chunk_analysis(
     coherence: Literal["confident", "needs_review"],
     reason: str = "",
 ) -> dict[str, Any]:
+    validate_analysis(
+        topic_fa=topic_fa,
+        topic_en=topic_en,
+        study_focus_fa=study_focus_fa,
+        study_focus_en=study_focus_en,
+    )
     session = load_session(output_dir)
     session.chunk_analyses[str(chunk_id)] = {
         "topic_fa": topic_fa,

@@ -8,6 +8,7 @@ from pathlib import Path
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, DocumentMeta, Element
 from doc_splitter.parsers._ids import next_element_id
+from doc_splitter.section_titles import looks_like_section_title
 
 HEADING_STYLES = {
     "Heading 1": 1,
@@ -77,6 +78,8 @@ def parse_docx(path: Path, config: SplitConfig, images_dir: Path | None = None) 
             el_id, counter = next_element_id(counter)
             if level is not None:
                 elements.append(Element(id=el_id, type="heading", text=text, level=level))
+            elif looks_like_section_title(text):
+                elements.append(Element(id=el_id, type="heading", text=text, level=2))
             elif re.match(r"^[\-\*\u2022\u2023\u25E6\u2043\u2219]", text):
                 items = [line.strip().lstrip("-*• ").strip() for line in text.splitlines() if line.strip()]
                 elements.append(Element(id=el_id, type="list", items=items))

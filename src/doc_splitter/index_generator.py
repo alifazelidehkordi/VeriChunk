@@ -272,7 +272,9 @@ def _study_workflow_section(lang: str) -> list[str]:
 
 def _session_topic_link(chunk: dict, session: SplitSession, lang: str) -> str:
     analysis = session.chunk_analyses.get(str(chunk["id"]), {})
-    topic = analysis.get(f"topic_{lang}", analysis.get("topic_en", chunk.get("title", "—")))
+    topic = analysis.get(f"topic_{lang}") or analysis.get("topic_en")
+    if not topic:
+        topic = chunk.get("inferred_topic") or chunk.get("title", "—")
     filename = chunk.get("file", "")
     if filename:
         return f"[{topic}]({quote(filename)})"
