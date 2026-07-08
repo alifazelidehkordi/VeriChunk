@@ -39,18 +39,33 @@ def verify_output(
     chunk_word_total = 0
 
     for chunk in chunks:
-        chunk_file = output_dir / chunk["file"]
-        if not chunk_file.exists():
-            errors.append(f"Missing chunk file: {chunk['file']}")
+        chunk_files = []
+        for key in ("file", "markdown_file", "pdf_file"):
+            name = chunk.get(key)
+            if name and name not in chunk_files:
+                chunk_files.append(name)
+
+        existing_files = []
+        for name in chunk_files:
+            chunk_file = output_dir / name
+            if chunk_file.exists():
+                existing_files.append(name)
+            else:
+                errors.append(f"Missing chunk file: {name}")
+
+        if not existing_files:
             continue
+
         found_ids.extend(chunk.get("element_ids", []))
         chunk_word_total += int(chunk.get("word_count", 0))
 
-        is_markdown = chunk["file"].endswith(".md")
-        if not is_markdown:
+        markdown_name = chunk.get("markdown_file")
+        if not markdown_name and chunk["file"].endswith(".md"):
+            markdown_name = chunk["file"]
+        if not markdown_name or markdown_name not in existing_files:
             continue
 
-        content = chunk_file.read_text(encoding="utf-8")
+        content = (output_dir / markdown_name).read_text(encoding="utf-8")
         for el_id in chunk.get("element_ids", []):
             el = ir.element_by_id(el_id)
             if el is None:

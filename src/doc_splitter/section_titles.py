@@ -1,4 +1,4 @@
-"""Detect section titles and validate topic / study_focus fields."""
+"""Generic section-title helpers and analysis-field validation."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ import re
 
 from doc_splitter.ir.models import DocumentIR, Element
 
-SKIP_TITLES = {
-    "laboratory medicine 2019/2020",
+GENERIC_SKIP_TITLES = {
     "this page intentionally left blank",
+    "intentionally left blank",
+    "blank page",
 }
 
 SECTION_TITLE_RE = re.compile(
@@ -17,10 +18,7 @@ SECTION_TITLE_RE = re.compile(
 TITLE_MARKUP_RE = re.compile(r"\*\*|__|</?u>|</?mark>")
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 BOLD_ONLY_RE = re.compile(r"^\*\*(.+)\*\*$")
-LAB_KEYWORD_RE = re.compile(
-    r"\b(INTRODUCTION|LABORATORY|DIAGNOSIS|INVESTIGATIONS|ASSESSING|DISORDERS|DISEASES)\b",
-    re.IGNORECASE,
-)
+URL_RE = re.compile(r"^(https?://|www\.)", re.IGNORECASE)
 
 TOPIC_MAX_WORDS = 14
 TOPIC_MAX_CHARS = 100
@@ -41,17 +39,45 @@ def _upper_ratio(text: str) -> float:
     return sum(1 for c in alpha if c.isupper()) / len(alpha)
 
 
+def _has_case(text: str) -> bool:
+    return any(c.islower() or c.isupper() for c in text if c.isalpha())
+
+
+def _starts_like_title(text: str) -> bool:
+    for c in text:
+        if c.isalpha():
+            return not _has_case(text) or c.isupper()
+    return False
+
+
+def _title_word_ratio(text: str) -> float:
+    words = [w.strip("()[]{}:;,.!?؟،") for w in text.split()]
+    words = [w for w in words if any(c.isalpha() for c in w)]
+    cased = [w for w in words if _has_case(w)]
+    if not cased:
+        return 0.0
+    title_words = [w for w in cased if w[0].isupper()]
+    return len(title_words) / len(cased)
+
+
+def _is_generic_skip_title(text: str) -> bool:
+    lowered = text.lower().strip()
+    return lowered in GENERIC_SKIP_TITLES
+
+
 def looks_like_section_title(text: str) -> bool:
     raw = text.strip()
     bold = BOLD_ONLY_RE.match(raw)
     if bold:
         raw = bold.group(1).strip()
     t = normalize_title_text(raw)
-    if not t or t.lower() in SKIP_TITLES:
+    if not t or _is_generic_skip_title(t):
         return False
-    if t.startswith("•") or t[0].islower():
+    if URL_RE.match(t):
         return False
-    if " rarely " in t.lower() or "edition" in t.lower():
+    if t.startswith(("•", "-", "*")):
+        return False
+    if _has_case(t) and t[0].islower():
         return False
     if len(t.split()) == 1 and len(t) < 20:
         return False
@@ -66,15 +92,16 @@ def looks_like_section_title(text: str) -> bool:
         return False
     if t.endswith((".", ";", "?")) and ratio < 0.7:
         return False
+    if t.endswith(("؟", "!", "؛")):
+        return False
+    title_ratio = _title_word_ratio(t)
     if " – " in t or " - " in t:
-        return ratio >= 0.55 or bool(LAB_KEYWORD_RE.search(t))
+        return ratio >= 0.55 or title_ratio >= 0.55 or not _has_case(t)
     if SECTION_TITLE_RE.match(t):
         return True
-    if LAB_KEYWORD_RE.search(t) and sum(1 for c in t if c.isupper()) >= 4:
-        return True
     words = t.split()
-    if len(words) <= 10 and t[0].isupper() and not t.endswith("."):
-        if ratio >= 0.65:
+    if len(words) <= 12 and _starts_like_title(t):
+        if ratio >= 0.65 or title_ratio >= 0.65 or not _has_case(t):
             return True
     return False
 
@@ -100,7 +127,7 @@ def _clean_title_candidate(text: str) -> str | None:
     if bold:
         raw = bold.group(1).strip()
     cleaned = normalize_title_text(raw)
-    if not cleaned or cleaned.lower() in SKIP_TITLES:
+    if not cleaned or _is_generic_skip_title(cleaned):
         return None
     return cleaned
 
@@ -111,13 +138,11 @@ def _heading_text(el: Element) -> str | None:
     cleaned = _clean_title_candidate(el.text)
     if not cleaned:
         return None
-    if looks_like_section_title(el.text):
-        return cleaned
-    if LAB_KEYWORD_RE.search(cleaned):
-        return cleaned
-    if _upper_ratio(cleaned) >= 0.6 and len(cleaned) >= 20:
-        return cleaned
-    return None
+    if len(cleaned) > 140:
+        return None
+    if looks_like_body_sentence(cleaned) and len(cleaned) > 80:
+        return None
+    return cleaned
 
 
 def _paragraph_section_text(el: Element) -> str | None:
@@ -131,19 +156,16 @@ def _paragraph_section_text(el: Element) -> str | None:
 
 def _section_title_score(text: str, *, styled_heading: bool) -> int:
     cleaned = normalize_title_text(text)
-    if cleaned.lower() in SKIP_TITLES:
+    if _is_generic_skip_title(cleaned):
         return -1
-    if looks_like_section_title(text):
-        score = 40 if styled_heading else 30
-    elif styled_heading and LAB_KEYWORD_RE.search(cleaned):
-        score = 35
-    elif styled_heading and _upper_ratio(cleaned) >= 0.6 and len(cleaned) >= 20:
-        score = 25
+    if styled_heading:
+        score = 40
+    elif looks_like_section_title(text):
+        score = 30
     else:
         return -1
-    if LAB_KEYWORD_RE.search(text):
-        score += 50
     score += int(_upper_ratio(text) * 30)
+    score += int(_title_word_ratio(text) * 20)
     score += min(len(text) // 4, 20)
     if " – " in text or " - " in text:
         score += 10
@@ -230,7 +252,7 @@ def validate_topic(text: str, *, field: str = "topic") -> None:
     if looks_like_body_sentence(t):
         raise ValueError(
             f"{field} looks like a body sentence, not a section title. "
-            "Use the main section heading (see section_headings in context)."
+            "Use a concise agent-authored session title based on the whole chunk."
         )
 
 
@@ -259,3 +281,60 @@ def validate_analysis(
     validate_topic(topic_fa, field="topic_fa")
     validate_study_focus(topic_en, study_focus_en, field="study_focus_en")
     validate_study_focus(topic_fa, study_focus_fa, field="study_focus_fa")
+
+
+_RE_AUTO_REASON = re.compile(r"^auto", re.IGNORECASE)
+_RE_AUTO_CUT = re.compile(r"auto-cut\s*~?\d*\s*words?", re.IGNORECASE)
+_RE_AUTO_HEADINGS = re.compile(r"auto\s+.*(?:section[_ ]?headings?|from\s+section|headings)", re.IGNORECASE)
+_RE_EMPTY_PUNCT = re.compile(r"^[\s,;:.!?؟،]*$")
+
+
+def validate_boundary_reason(reason: str) -> None:
+    if not reason or not reason.strip():
+        raise ValueError(
+            "Boundary reason must not be empty. Explain the conceptual decision — "
+            "where does the current topic end and a new one begin?"
+        )
+    r = reason.strip()
+    if _RE_EMPTY_PUNCT.match(r):
+        raise ValueError("Boundary reason must consist of actual words, not just punctuation.")
+    if _RE_AUTO_CUT.match(r):
+        raise ValueError(
+            "Boundary reason must be a conceptual decision, not an auto-cut. "
+            "Read the content window and explain WHY you chose this cut point."
+        )
+    if _RE_AUTO_REASON.match(r):
+        raise ValueError(
+            "Boundary reason must be written by the host agent, not auto-generated. "
+            "Read the content and provide a specific conceptual reason."
+        )
+    if len(r) < 12:
+        raise ValueError(
+            f"Boundary reason is too short ({len(r)} chars). "
+            "Provide a conceptual explanation (where the topic ends, why this cut is logical)."
+        )
+
+
+def validate_analysis_reason(reason: str) -> None:
+    if not reason or not reason.strip():
+        raise ValueError(
+            "Analysis reason must not be empty. Explain your coherence judgment."
+        )
+    r = reason.strip()
+    if _RE_EMPTY_PUNCT.match(r):
+        raise ValueError("Analysis reason must consist of actual words, not just punctuation.")
+    if _RE_AUTO_HEADINGS.match(r) or _RE_AUTO_CUT.match(r) or "auto from section" in r.lower() or "auto populated" in r.lower():
+        raise ValueError(
+            "Analysis reason must be written by the host agent. "
+            "'auto from section_headings' is not acceptable — read the chunk and provide a real assessment."
+        )
+    if _RE_AUTO_REASON.match(r):
+        raise ValueError(
+            "Analysis reason must be written by the host agent, not auto-generated. "
+            "Read the chunk content and provide a specific coherence judgment."
+        )
+    if len(r) < 8:
+        raise ValueError(
+            f"Analysis reason is too short ({len(r)} chars). "
+            "Provide a real coherence assessment for this chunk."
+        )

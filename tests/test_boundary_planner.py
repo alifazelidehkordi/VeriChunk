@@ -1,4 +1,4 @@
-from doc_splitter.boundary.planner import SplitSession, get_boundary_context
+from doc_splitter.boundary.planner import SplitSession, commit_boundary, get_boundary_context
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, DocumentMeta, Element
 

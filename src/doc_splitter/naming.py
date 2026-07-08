@@ -46,10 +46,20 @@ def resolve_chunk_names(
 
     for i, (start_idx, end_idx) in enumerate(ranges, start=1):
         analysis = session.chunk_analyses.get(str(i), {})
+        agent_topic = analysis.get("topic_en")
         inferred = infer_chunk_topic(ir, start_idx, end_idx)
-        display_title = analysis.get("topic_en") or inferred or f"Section {i}"
-        slug_source = analysis.get("topic_en") or inferred or f"section-{i}"
-        slug = slugify(slug_source, config.slug_max_length) or f"section-{i}"
+
+        if agent_topic:
+            display_title = agent_topic
+            slug_source = agent_topic
+        elif inferred:
+            display_title = inferred
+            slug_source = inferred
+        else:
+            display_title = f"Session {i} (needs agent analysis)"
+            slug_source = f"session-{i}-needs-agent-analysis"
+
+        slug = slugify(slug_source, config.slug_max_length) or f"session-{i}-needs-agent-analysis"
 
         base = f"{i:02d}_{slug}"
         candidate = base

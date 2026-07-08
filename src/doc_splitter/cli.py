@@ -7,18 +7,19 @@ import json
 import sys
 from pathlib import Path
 
-from doc_splitter.boundary.planner import commit_boundary, get_boundary_context, load_session
+from doc_splitter.boundary.planner import commit_boundary, get_boundary_context, load_session, record_chunk_read
 from doc_splitter.config import SplitConfig, config_from_dict
 from doc_splitter.content.analyzer import (
     commit_chunk_analysis,
     get_chunk_analysis_context,
     read_chunk_content,
 )
+from doc_splitter.index_generator import commit_study_indexes
 from doc_splitter.ir.serialize import load_ir
 from doc_splitter.orchestrator import (
     init_session,
     parse_document,
-    run_generate_index,
+    run_index_context,
     run_write_and_verify,
 )
 from doc_splitter.verifier import verify_output
@@ -30,6 +31,7 @@ _SESSION_RESTORE_COMMANDS = frozenset(
         "write",
         "verify",
         "index",
+        "commit-index",
         "analysis-context",
         "commit-analysis",
         "get-chunk",
@@ -41,7 +43,8 @@ def _add_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--min-pages", type=int, default=5)
     parser.add_argument("--max-pages", type=int, default=10)
     parser.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
-    parser.add_argument("--reading-speed-wpm", type=int, default=200)
+    parser.add_argument("--reading-speed-wpm", type=int, default=80,
+                        help="Study reading speed in words per minute (default: 80 for technical/medical content)")
     parser.add_argument(
         "--output-format",
         choices=["markdown", "pdf", "both"],
@@ -168,6 +171,11 @@ def cmd_get_chunk(args: argparse.Namespace) -> int:
     if chunk is None:
         raise ValueError(f"Chunk {args.chunk_id} not found in manifest")
 
+    try:
+        record_chunk_read(output_dir, args.chunk_id)
+    except Exception:
+        pass
+
     content = read_chunk_content(output_dir, chunk)
     payload = {
         "chunk_id": args.chunk_id,
@@ -204,7 +212,29 @@ def cmd_commit_analysis(args: argparse.Namespace) -> int:
 
 def cmd_index(args: argparse.Namespace) -> int:
     config = _resolve_config(args)
-    fa, en = run_generate_index(config)
+    ctx = run_index_context(config)
+    print(json.dumps(ctx, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _read_text_arg(value: str | None, file_value: Path | None, field: str) -> str:
+    if value and file_value:
+        raise ValueError(f"Use either --{field} or --{field}-file, not both")
+    if file_value:
+        return file_value.read_text(encoding="utf-8")
+    if value:
+        return value
+    raise ValueError(f"--{field} or --{field}-file is required")
+
+
+def cmd_commit_index(args: argparse.Namespace) -> int:
+    index_fa = _read_text_arg(args.fa, args.fa_file, "fa")
+    index_en = _read_text_arg(args.en, args.en_file, "en")
+    fa, en = commit_study_indexes(
+        args.output_dir,
+        index_fa=index_fa,
+        index_en=index_en,
+    )
     print(json.dumps({"study_index_fa": str(fa), "study_index_en": str(en)}, indent=2))
     return 0
 
@@ -263,9 +293,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_ca.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
     p_ca.set_defaults(func=cmd_commit_analysis)
 
-    p_index = sub.add_parser("index", help="Generate study indexes")
+    p_index = sub.add_parser("index", help="Get context for agent-authored study indexes")
     _add_config_args(p_index)
     p_index.set_defaults(func=cmd_index)
+
+    p_ci = sub.add_parser("commit-index", help="Commit agent-authored study indexes")
+    p_ci.add_argument("--fa", default=None, help="Persian index Markdown body")
+    p_ci.add_argument("--en", default=None, help="English index Markdown body")
+    p_ci.add_argument("--fa-file", type=Path, default=None, help="Path to Persian index Markdown")
+    p_ci.add_argument("--en-file", type=Path, default=None, help="Path to English index Markdown")
+    p_ci.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
+    p_ci.set_defaults(func=cmd_commit_index)
 
     return parser
 

@@ -52,7 +52,9 @@ Long study documents overwhelm AI assistants: they exceed context windows, trigg
 - **Verified output** — checks element coverage, duplicates, word-count drift, table rows, image references, and PDF page coverage.
 - **Markdown and PDF chunks** — write semantic Markdown chunks, extracted PDF chunks, or both.
 - **Boundary overlap for PDFs** — includes adjacent boundary pages to reduce loss when conceptual cuts occur mid-page.
-- **Bilingual study indexes** — generates `study-index-fa.md` and `study-index-en.md` with session links, study focus, page ranges, and estimated reading time.
+- **Agent-authored bilingual study indexes** — provides verified context for the host agent to write `study-index-fa.md` and `study-index-en.md` with session links, study focus, page ranges, and estimated reading time.
+- **Agent-decision enforcement** — rejects auto-generated reasons (`auto-cut`, `auto from section_headings`), template study-focus, and index commits without reading every chunk file.
+- **Realistic study-time estimates** — defaults to 80 words per minute (study speed) rather than casual reading speed (200 wpm) for technical/medical content.
 
 ## Architecture
 
@@ -155,7 +157,7 @@ Ask your host agent to read the JSON, choose one safe candidate, and return eith
 {
   "action": "cut",
   "element_id": "el-042",
-  "reason": "The diagnostic algorithm ends here; the next section begins treatment selection."
+  "reason": "The current explanation ends here; the next section starts a different topic."
 }
 ```
 
@@ -166,7 +168,7 @@ doc-splitter commit-boundary \
   --out ./output/book \
   --action cut \
   --element-id el-042 \
-  --reason "The diagnostic algorithm ends here; the next section begins treatment selection."
+  --reason "The current explanation ends here; the next section starts a different topic."
 ```
 
 If the concept continues beyond the current window:
@@ -204,10 +206,14 @@ doc-splitter commit-analysis \
   --reason "The chunk covers one continuous regulatory mechanism."
 ```
 
-Generate indexes after every chunk has analysis:
+Ask the host agent to write the final indexes after every chunk has analysis:
 
 ```bash
 doc-splitter index --out ./output/book
+doc-splitter commit-index \
+  --out ./output/book \
+  --fa-file ./agent-written-study-index-fa.md \
+  --en-file ./agent-written-study-index-en.md
 ```
 
 ### PDF-native chunks
@@ -257,7 +263,7 @@ For project-level MCP configuration, use `.mcp.json`:
 
 Then ask your agent:
 
-> Use the `doc-splitter` MCP tools to split `book.pdf` into 5–10 page conceptual Markdown chunks under `output/book`. Choose only safe boundary candidates, write the chunks, verify integrity, analyze every chunk in Persian and English, and generate the study indexes.
+> Use the `doc-splitter` MCP tools to split `book.pdf` into 5–10 page conceptual Markdown chunks under `output/book`. Choose only safe boundary candidates, write the chunks, verify integrity, analyze every chunk in Persian and English, then author and commit the study indexes.
 
 ## CLI Reference
 
@@ -274,7 +280,8 @@ Then ask your agent:
 | `doc-splitter get-chunk` | Read one chunk's content by numeric ID. |
 | `doc-splitter analysis-context` | Print full chunk content and analysis instructions. |
 | `doc-splitter commit-analysis` | Store bilingual topic, study focus, coherence, and reason for one chunk. |
-| `doc-splitter index` | Generate `study-index-fa.md` and `study-index-en.md`. |
+| `doc-splitter index` | Return context for agent-authored `study-index-fa.md` and `study-index-en.md`. |
+| `doc-splitter commit-index` | Store final Persian and English indexes written by the host agent. |
 
 ### Common Options
 
@@ -285,7 +292,7 @@ Available on `run`, `parse`, `boundary-context`, `commit-boundary`, `write`, `ve
 | `--out PATH` | `output` | Output/session directory. |
 | `--min-pages N` | `5` | Target minimum chunk size (converted to words via `words_per_page`). |
 | `--max-pages N` | `10` | Target maximum chunk size; guidance for the host agent. |
-| `--reading-speed-wpm N` | `200` | Reading-speed estimate used by study indexes. |
+| `--reading-speed-wpm N` | `80` | Study reading-speed estimate (wpm) for index time calculations. Use 80–100 for technical/medical content, 150–200 for general reading. |
 | `--output-format markdown\|pdf\|both` | `markdown` | Chunk output format. PDF output requires PDF input. |
 | `--overlap-pages N` | `1` | Extra neighboring pages around PDF boundary pages. |
 
@@ -336,7 +343,11 @@ Returns JSON with `status`, `chunk_number`, `content_window`, `safe_candidates`,
 
 ### `index`
 
-Requires every chunk to have committed content analysis, including both study-focus fields. Writes `study-index-fa.md` and `study-index-en.md`.
+Requires every chunk to have committed content analysis, including both study-focus fields. Returns verified chunk metadata and instructions for the host agent. It does not write the index prose.
+
+### `commit-index`
+
+Stores the final `study-index-fa.md` and `study-index-en.md` bodies authored by the host agent. The command validates that every chunk file is referenced.
 
 ## MCP Tools
 
@@ -350,7 +361,8 @@ Requires every chunk to have committed content analysis, including both study-fo
 | `verify_integrity` | optional `output_dir` | no | Re-runs verification. |
 | `get_chunk_analysis_context` | `chunk_id`, optional `output_dir` | no | Returns full chunk content for analysis. |
 | `commit_chunk_analysis` | `chunk_id`, `topic_fa`, `topic_en`, `study_focus_fa`, `study_focus_en`, `coherence`, optional `reason`, `output_dir` | yes | Stores bilingual chunk analysis. |
-| `generate_study_index` | optional `output_dir`, `reading_speed_wpm` | yes | Generates Persian and English study indexes. |
+| `get_study_index_context` | optional `output_dir`, `reading_speed_wpm` | no | Returns context for agent-authored Persian and English study indexes. |
+| `commit_study_index` | `index_fa`, `index_en`, optional `output_dir` | yes | Stores final Persian and English study indexes written by the host agent. |
 
 The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`.
 
@@ -365,7 +377,7 @@ The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPL
 | Maximum pages | `--max-pages` | `10` | Target guidance for the host agent. |
 | Output format | `--output-format` | `markdown` | `markdown`, `pdf`, or `both`. |
 | Boundary overlap | `--overlap-pages` | `1` | PDF outputs only. |
-| Reading speed | `--reading-speed-wpm` | `200` | Index time estimates. |
+| Reading speed | `--reading-speed-wpm` | `80` | Index time estimates; 80 wpm for technical/medical study, 150+ for general content. |
 
 ### Internal Defaults
 
@@ -419,12 +431,12 @@ A PDF or `both` run may also include `.pdf` files per chunk.
 
 ### Study Index Structure
 
-Each `study-index-*.md` includes:
+Each agent-authored `study-index-*.md` should include:
 
 1. **Overview** — session count, PDF page coverage, total study time
-2. **Chapter summary table** — groups, session ranges, pages, estimated time
-3. **Suggested study workflow** — practical study method
-4. **Per-chapter session tables** — topic links and **Study Focus** column
+2. **Session table** — topic links, page ranges, estimated time, and **Study Focus**
+3. **Optional grouping** — chapters or sections only when they naturally fit the document
+4. **Document-specific study guidance** — only when useful for that source
 
 ## Host-Agent Workflow
 
@@ -463,10 +475,12 @@ The LLM must not invent boundaries. Committing an `element_id` not in `safe_cand
 ### Analysis Loop
 
 1. `analysis-context` returns full chunk content and neighboring titles.
-2. The host agent writes a concise bilingual topic and practical study focus.
-3. `commit-analysis` stores the result in `.split-session.json`.
-4. Chunks marked `needs_review` appear in `semantic-review-report.json`.
-5. `index` renders Persian and English study indexes.
+2. The host agent writes a concise bilingual topic and practical study focus. `topic_en` becomes the final chunk filename slug.
+3. `commit-analysis` stores the result in `.split-session.json`, renames the chunk from the agent-selected topic, and updates `manifest.json`.
+4. Chunks marked `needs_review` appear in `semantic-review-report.json` and block final index commit until the boundary/coherence issue is resolved.
+5. **Every `get_chunk` call is tracked.** The agent must read all chunk files before `commit-index` is accepted.
+6. `index` returns context for the final index-writing pass, including `chunks_unread` so the agent knows which files remain.
+7. The host agent writes both complete Markdown indexes and stores them with `commit-index`.
 
 The study focus should answer: **What should the learner master in this session?**
 
@@ -522,6 +536,10 @@ For PDF output, conceptual chunks are decided by element boundaries, but written
 | Verification fails (word-count mismatch) | Parser and written chunks diverged. | Inspect Markdown around tables/images; file an issue with sample input. |
 | `PDF output is only supported for PDF inputs` | `--output-format pdf` or `both` with DOCX. | Use `--output-format markdown` for DOCX. |
 | `Missing content analyses` during `index` | Not every chunk has committed analysis. | Run `analysis-context` and `commit-analysis` for each chunk. |
+| `Chunk files not yet read by the agent` during `commit-index` | Index committed without reading all chunk files via `get_chunk`. | Call `get_chunk` for every unread chunk ID listed in the error; the CLI tracks reads automatically. |
+| `Boundary reason must be a conceptual decision` | Reason contains `auto-cut` or similar auto-generated pattern. | Write a real conceptual reason explaining where the topic ends and why. |
+| `auto from section_headings is not acceptable` | Analysis reason is auto-generated. | Read the chunk and provide your own coherence assessment. |
+| `auto-generated study-focus template` in index | Index contains template like `Study X: core definitions, mechanisms`. | Write unique educational study focus for each session. |
 | MCP server cannot import Python package | Wrong Python interpreter. | Set `DOC_SPLITTER_PYTHON` to the venv Python path. |
 | Temporary-file errors | No writable temp directory. | Set `TMPDIR` to a writable directory. |
 
@@ -544,7 +562,7 @@ ducsplit/
 │   ├── writers/                      # Markdown and PDF writers
 │   ├── content/                      # Chunk analysis workflow
 │   ├── verifier.py                   # Integrity verification
-│   └── index_generator.py            # Bilingual study indexes
+│   └── index_generator.py            # Agent-authored index context/commit
 └── tests/
 ```
 
@@ -573,6 +591,7 @@ Recommended workflow:
 ## Design Principles
 
 - **LLM judgment is constrained** — the agent decides among safe options; it does not rewrite parser state freely.
+- **Agent laziness is rejected** — auto-generated reasons (`auto-cut`, `auto from section_headings`), template study-focus, and index commits without reading chunk files are caught by validators and refused.
 - **Verification is mandatory** — generated chunks are auditable and checked for loss or duplication.
 - **Concepts beat page counts** — 5–10 pages is a target, not a hard rule.
 - **No bundled LLM** — `ducsplit` does not call an external LLM API; the host agent does.

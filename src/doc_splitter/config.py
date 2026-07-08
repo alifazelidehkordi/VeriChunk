@@ -17,7 +17,7 @@ class SplitConfig:
     boundary_window_extension_pages: int = 10
     words_per_page: int = 400
     image_extraction: bool = True
-    reading_speed_wpm: int = 200
+    reading_speed_wpm: int = 80
     use_llm_chapter_grouping: bool = False
     ocr_enabled: bool = False
     on_missing_text_page: str = "skip_and_flag"

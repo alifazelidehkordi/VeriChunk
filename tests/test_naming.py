@@ -42,19 +42,19 @@ def test_resolve_chunk_names_semantic_and_unique():
 def test_resolve_chunk_names_uses_inferred_section_title_not_body_text():
     ir = DocumentIR(
         elements=[
-            Element(id="el-001", type="paragraph", text="LABORATORY MEDICINE 2019/2020"),
-            Element(id="el-002", type="paragraph", text="INTRODUCTION – CLINICAL BIOCHEMISTRY"),
+            Element(id="el-001", type="paragraph", text="This page intentionally left blank"),
+            Element(id="el-002", type="paragraph", text="RECURSIVE TREE TRAVERSAL"),
             Element(
                 id="el-003",
                 type="paragraph",
-                text="Laboratory medicine is a clinical discipline studying biological samples.",
+                text="Recursive traversal visits nodes by repeatedly applying the same operation.",
             ),
         ],
-        meta=DocumentMeta(source_file="medlab.docx"),
+        meta=DocumentMeta(source_file="algorithms.docx"),
     )
-    session = SplitSession(source_file="medlab.docx", output_dir="output", config={})
+    session = SplitSession(source_file="algorithms.docx", output_dir="output", config={})
     names = resolve_chunk_names(ir, session, [(0, 2)], SplitConfig(), ext="md")
 
-    assert names[0]["title"] == "INTRODUCTION – CLINICAL BIOCHEMISTRY"
-    assert names[0]["file"].startswith("01_introduction")
-    assert "laboratory-medicine-is-a-clinical" not in names[0]["file"]
+    assert names[0]["title"] == "RECURSIVE TREE TRAVERSAL"
+    assert names[0]["file"].startswith("01_recursive")
+    assert "recursive-traversal-visits-nodes" not in names[0]["file"]

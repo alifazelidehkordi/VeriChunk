@@ -8,66 +8,123 @@ from doc_splitter.section_titles import (
     normalize_title_text,
     pick_best_topic,
     validate_analysis,
+    validate_analysis_reason,
+    validate_boundary_reason,
     validate_topic,
 )
 
 
-def test_looks_like_section_title_recognizes_medlab_style():
-    assert looks_like_section_title("INTRODUCTION – CLINICAL BIOCHEMISTRY")
+def test_looks_like_section_title_recognizes_generic_titles():
+    assert looks_like_section_title("RECURSIVE TREE TRAVERSAL")
     assert looks_like_section_title(
-        "LABORATORY INVESTIGATIONS AIMED AT ASSESSING THE FUNCTIONAL / STRUCTURAL INTEGRITY OF THE MYOCARDIUM"
+        "SYSTEM DESIGN TRADEOFFS FOR DISTRIBUTED QUEUES"
     )
-    assert not looks_like_section_title("LABORATORY MEDICINE 2019/2020")
+    assert looks_like_section_title("مبانی طراحی الگوریتم")
     assert not looks_like_section_title("CV = (SD/Mean) x 100")
-    assert not looks_like_section_title("Biological variability – Intra-individual:")
+    assert not looks_like_section_title("This page intentionally left blank")
+    assert not looks_like_section_title("Recursive calls are useful because they simplify repeated work.")
     assert not looks_like_section_title(
-        "HeFH is the most frequent genetic disease, HoFH is rarer and it is really dangerous."
+        "This chapter explains several examples, and it is really important."
     )
 
 
 def test_infer_chunk_topic_from_paragraph_section_titles():
     ir = DocumentIR(
         elements=[
-            Element(id="el-001", type="paragraph", text="LABORATORY MEDICINE 2019/2020"),
-            Element(id="el-002", type="paragraph", text="INTRODUCTION – CLINICAL BIOCHEMISTRY"),
+            Element(id="el-001", type="paragraph", text="This page intentionally left blank"),
+            Element(id="el-002", type="paragraph", text="RECURSIVE TREE TRAVERSAL"),
             Element(
                 id="el-003",
                 type="paragraph",
-                text="Laboratory medicine is a clinical discipline studying biological samples.",
+                text="Recursive traversal visits nodes by repeatedly applying the same operation.",
             ),
         ],
         meta=DocumentMeta(source_file="t.docx"),
     )
-    assert infer_chunk_topic(ir, 0, 2) == "INTRODUCTION – CLINICAL BIOCHEMISTRY"
-    assert list_section_headings(ir, 0, 2) == ["INTRODUCTION – CLINICAL BIOCHEMISTRY"]
+    assert infer_chunk_topic(ir, 0, 2) == "RECURSIVE TREE TRAVERSAL"
+    assert list_section_headings(ir, 0, 2) == ["RECURSIVE TREE TRAVERSAL"]
 
 
 def test_validate_topic_rejects_sentence_like_title():
     with pytest.raises(ValueError, match="body sentence"):
-        validate_topic("HeFH is the most frequent genetic disease.")
+        validate_topic("Recursive calls are useful because they simplify repeated work.")
 
 
 def test_normalize_title_text_strips_pdf_markdown():
     assert (
-        normalize_title_text("**INTRODUCTION – CLINICAL BIOCHEMISTRY**")
-        == "INTRODUCTION – CLINICAL BIOCHEMISTRY"
+        normalize_title_text("**RECURSIVE TREE TRAVERSAL**")
+        == "RECURSIVE TREE TRAVERSAL"
     )
-    assert normalize_title_text("<u>Biological samples:</u>") == "Biological samples:"
+    assert normalize_title_text("<u>Design constraints:</u>") == "Design constraints:"
 
 
 def test_pick_best_topic_skips_overlong_pdf_heading():
     headings = [
-        "INTRODUCTION – CLINICAL BIOCHEMISTRY",
-        "LABORATORY INVESTIGATIONS AIMED AT ASSESSING THE FUNCTIONAL / STRUCTURAL INTEGRITY OF THE PANCREAS",
-        "placed on the needle (both before and after blood withdrawal).",
+        "RECURSIVE TREE TRAVERSAL",
+        "SYSTEM DESIGN TRADEOFFS FOR DISTRIBUTED QUEUES WITH MULTIPLE CONSUMER GROUPS AND FAILURE MODES",
+        "this paragraph continues the explanation with a full sentence.",
     ]
-    assert pick_best_topic(headings) == "INTRODUCTION – CLINICAL BIOCHEMISTRY"
+    assert pick_best_topic(headings) == "RECURSIVE TREE TRAVERSAL"
 
 
 def test_validate_analysis_accepts_proper_fields():
     validate_analysis(
-        topic_fa="مقدمه بیوشیمی بالینی",
-        topic_en="Introduction to Clinical Biochemistry",
-        study_focus_fa="نمونه‌گیری خون، serum/plasma، vacutainer، sensitivity/specificity و reference interval.",
-        study_focus_en="Blood sampling, serum/plasma, vacutainer, sensitivity/specificity, and reference intervals.",
+        topic_fa="پیمایش بازگشتی درخت",
+        topic_en="Recursive Tree Traversal",
+        study_focus_fa="حالت پایه، ترتیب بازدید گره‌ها، پشته فراخوانی و خطاهای رایج پیاده‌سازی را مرور کنید.",
+        study_focus_en="Review base cases, node visit order, call stack behavior, and common implementation mistakes.",
     )
+
+
+class TestValidateBoundaryReason:
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError, match="must not be empty"):
+            validate_boundary_reason("")
+
+    def test_rejects_auto_cut_pattern(self):
+        with pytest.raises(ValueError, match="not an auto-cut"):
+            validate_boundary_reason("auto-cut ~6047 words")
+
+    def test_rejects_auto_prefix(self):
+        with pytest.raises(ValueError, match="not auto-generated"):
+            validate_boundary_reason("auto generated boundary")
+
+    def test_rejects_too_short(self):
+        with pytest.raises(ValueError, match="too short"):
+            validate_boundary_reason("ok")
+
+    def test_rejects_punctuation_only(self):
+        with pytest.raises(ValueError, match="actual words"):
+            validate_boundary_reason(",,,")
+
+    def test_accepts_proper_reason(self):
+        validate_boundary_reason("Examples 1-3 belong together; new topic starts after summary paragraph.")
+
+
+class TestValidateAnalysisReason:
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError, match="must not be empty"):
+            validate_analysis_reason("")
+
+    def test_rejects_auto_from_section_headings(self):
+        with pytest.raises(ValueError, match="not acceptable"):
+            validate_analysis_reason("auto from section_headings")
+
+    def test_rejects_auto_populated_from_headings(self):
+        with pytest.raises(ValueError, match="not acceptable|not auto-generated"):
+            validate_analysis_reason("auto populated from section headings")
+
+    def test_rejects_auto_generated(self):
+        with pytest.raises(ValueError, match="not auto-generated"):
+            validate_analysis_reason("auto generated analysis")
+
+    def test_rejects_too_short(self):
+        with pytest.raises(ValueError, match="too short"):
+            validate_analysis_reason("ok")
+
+    def test_rejects_punctuation_only(self):
+        with pytest.raises(ValueError, match="actual words"):
+            validate_analysis_reason(";;;")
+
+    def test_accepts_proper_reason(self):
+        validate_analysis_reason("Chunk covers glucose metabolism investigations cohesively with clear diagnostic flow.")

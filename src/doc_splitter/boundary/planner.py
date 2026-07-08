@@ -14,6 +14,7 @@ from doc_splitter.boundary.safe_candidates import (
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import load_json, save_json
+from doc_splitter.section_titles import validate_boundary_reason
 from doc_splitter.structure_analyzer import analyze_structure, page_range_for_elements
 
 SESSION_FILE = ".split-session.json"
@@ -37,6 +38,7 @@ class SplitSession:
     window_pages: int = 15
     boundaries: list[dict[str, Any]] = field(default_factory=list)
     chunk_analyses: dict[str, dict[str, Any]] = field(default_factory=dict)
+    chunks_read: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -48,6 +50,7 @@ class SplitSession:
             "window_pages": self.window_pages,
             "boundaries": self.boundaries,
             "chunk_analyses": self.chunk_analyses,
+            "chunks_read": self.chunks_read,
         }
 
     @classmethod
@@ -61,6 +64,7 @@ class SplitSession:
             window_pages=int(data.get("window_pages", 15)),
             boundaries=list(data.get("boundaries", [])),
             chunk_analyses=dict(data.get("chunk_analyses", {})),
+            chunks_read=list(data.get("chunks_read", [])),
         )
 
 
@@ -70,6 +74,13 @@ def session_path(output_dir: Path) -> Path:
 
 def save_session(session: SplitSession, output_dir: Path) -> None:
     save_json(session.to_dict(), session_path(output_dir))
+
+
+def record_chunk_read(output_dir: Path, chunk_id: int) -> None:
+    session = load_session(output_dir)
+    if chunk_id not in session.chunks_read:
+        session.chunks_read.append(chunk_id)
+        save_session(session, output_dir)
 
 
 def load_session(output_dir: Path) -> SplitSession:
@@ -171,6 +182,8 @@ def commit_boundary(
 
     if not element_id:
         raise ValueError("element_id is required for action=cut")
+
+    validate_boundary_reason(reason)
 
     end_index = ir.index_of(element_id)
     _, candidates = candidates_in_word_window(

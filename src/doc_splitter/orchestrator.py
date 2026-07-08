@@ -6,17 +6,14 @@ from pathlib import Path
 
 from doc_splitter.boundary.planner import (
     SplitSession,
-    commit_boundary,
-    get_boundary_context,
     load_session,
     save_session,
 )
 from doc_splitter.config import SplitConfig, config_from_dict, config_to_dict
-from doc_splitter.content.analyzer import commit_chunk_analysis, get_chunk_analysis_context
 from doc_splitter.format_detector import InputFormat, detect_format
-from doc_splitter.index_generator import generate_study_indexes
+from doc_splitter.index_generator import get_index_context
 from doc_splitter.ir.models import DocumentIR
-from doc_splitter.ir.serialize import load_ir, save_ir
+from doc_splitter.ir.serialize import save_ir
 from doc_splitter.section_titles import validate_analysis
 from doc_splitter.parsers import parse_docx, parse_pdf
 from doc_splitter.verifier import verify_output
@@ -84,7 +81,7 @@ def run_write_and_verify(ir: DocumentIR, config: SplitConfig) -> dict:
     return report
 
 
-def run_generate_index(config: SplitConfig) -> tuple[Path, Path]:
+def run_index_context(config: SplitConfig) -> dict:
     session = load_session(config.output_dir)
     missing = []
     manifest_chunks = (config.output_dir / "manifest.json").read_text(encoding="utf-8")
@@ -117,19 +114,6 @@ def run_generate_index(config: SplitConfig) -> tuple[Path, Path]:
             "Use get_chunk_analysis_context / commit_chunk_analysis first."
         )
 
-    ir = load_ir(config.output_dir / "ir.json")
-    session_cfg = session.config
-    if config.source_path is None and session_cfg.get("source_path"):
-        config.source_path = Path(session_cfg["source_path"])
-    input_format = None
-    if config.source_path:
-        try:
-            input_format = detect_format(config.source_path)
-        except Exception:
-            pass
-    write_chunks(ir, session, config, config.output_dir, input_format=input_format)
-
-    paths = generate_study_indexes(config.output_dir, config)
-    session.stage = "complete"
+    session.stage = "index"
     save_session(session, config.output_dir)
-    return paths
+    return get_index_context(config.output_dir, config)

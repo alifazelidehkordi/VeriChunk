@@ -220,10 +220,10 @@ server.registerTool(
 );
 
 server.registerTool(
-  "generate_study_index",
+  "get_study_index_context",
   {
-    title: "Generate study index",
-    description: "Render study-index-fa.md and study-index-en.md from manifest and analyses.",
+    title: "Get study index context",
+    description: "Return verified chunk metadata and analyses so the host agent can author the study indexes.",
     inputSchema: {
       output_dir: outDir,
       reading_speed_wpm: z.number().int().optional(),
@@ -234,6 +234,26 @@ server.registerTool(
     const args = ["index"];
     if (output_dir) args.push("--out", output_dir);
     if (reading_speed_wpm) args.push("--reading-speed-wpm", String(reading_speed_wpm));
+    const out = await runCli(args);
+    return { content: [{ type: "text", text: out }] };
+  },
+);
+
+server.registerTool(
+  "commit_study_index",
+  {
+    title: "Commit study index",
+    description: "Store Persian and English study indexes authored by the host agent.",
+    inputSchema: {
+      output_dir: outDir,
+      index_fa: z.string(),
+      index_en: z.string(),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false },
+  },
+  async ({ output_dir, index_fa, index_en }) => {
+    const args = ["commit-index", "--fa", index_fa, "--en", index_en];
+    if (output_dir) args.push("--out", output_dir);
     const out = await runCli(args);
     return { content: [{ type: "text", text: out }] };
   },
