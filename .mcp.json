@@ -2,8 +2,10 @@
   "mcpServers": {
     "doc-splitter": {
       "command": "node",
-      "args": ["server.js"],
-      "cwd": "/home/ali/Desktop/ducsplit"
+      "args": ["/home/ali/Desktop/ducsplit/server.js"],
+      "env": {
+        "DOC_SPLITTER_PYTHON": "/home/ali/Desktop/ducsplit/.venv/bin/python3"
+      }
     }
   }
 }

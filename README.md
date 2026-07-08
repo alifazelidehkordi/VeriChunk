@@ -2,6 +2,8 @@
 
 Conceptual PDF/DOCX splitter with verification, bilingual study indexes, MCP server, and CLI.
 
+**Repository:** https://github.com/alifazelidehkordi/ducsplit
+
 ## Requirements
 
 - Python 3.10+
@@ -46,15 +48,29 @@ doc-splitter commit-analysis --out ./output --chunk-id 1 \
 doc-splitter index --out ./output
 ```
 
-## MCP setup (Cursor / Claude Code)
+## MCP setup (all AI CLIs)
 
-Add to project `.mcp.json` or run:
+After `npm install`, register the MCP server once (replace the path if you cloned elsewhere):
 
 ```bash
-claude mcp add doc-splitter -- node /home/ali/Desktop/ducsplit/server.js
+REPO=/home/ali/Desktop/ducsplit
+
+# Claude Code (user + project .mcp.json)
+claude mcp add doc-splitter -s user -- node "$REPO/server.js"
+
+# Codex
+codex mcp add doc-splitter -- node "$REPO/server.js"
+
+# Grok CLI
+grok mcp add doc-splitter -s user -- node "$REPO/server.js"
+
+# OpenCode
+opencode mcp add doc-splitter -- node "$REPO/server.js"
 ```
 
-Tools: `split_document`, `get_boundary_context`, `commit_boundary`, `write_chunks`, `get_chunk`, `verify_integrity`, `get_chunk_analysis_context`, `commit_chunk_analysis`, `generate_study_index`.
+Or use the project `.mcp.json` (Claude Code / Grok project scope pick it up automatically).
+
+**Tools:** `split_document`, `get_boundary_context`, `commit_boundary`, `write_chunks`, `get_chunk`, `verify_integrity`, `get_chunk_analysis_context`, `commit_chunk_analysis`, `generate_study_index`.
 
 ## Output layout
 
