@@ -28,3 +28,4 @@ packages = ["src/doc_splitter"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

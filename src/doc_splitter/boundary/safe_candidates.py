@@ -44,9 +44,7 @@ def find_safe_candidates(
 
     for i in range(start_index, end_index + 1):
         el = ir.elements[i]
-        if el.type not in {"paragraph", "table", "list", "heading"}:
-            continue
-        if i == len(ir.elements) - 1:
+        if el.type not in {"paragraph", "table", "list", "heading", "image"}:
             continue
         candidates.append(
             SafeCandidate(

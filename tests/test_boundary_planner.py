@@ -34,7 +34,7 @@ def test_get_boundary_context_offers_tail_candidates_when_remainder_is_short():
 
     assert ctx["status"] == "needs_agent_decision"
     assert ctx["safe_candidates"]
-    assert ctx["safe_candidates"][-1]["element_id"] == "el-011"
+    assert ctx["safe_candidates"][-1]["element_id"] == "el-012"
 
 
 def test_extend_requires_explicit_oversize_permission(tmp_path):
@@ -93,7 +93,12 @@ def test_confirmed_topic_change_becomes_a_hard_boundary(tmp_path):
         ],
         meta=DocumentMeta(source_file="t.pdf"),
     )
-    session = SplitSession(source_file="t.pdf", output_dir=str(tmp_path), config={})
+    session = SplitSession(
+        source_file="t.pdf",
+        output_dir=str(tmp_path),
+        config={},
+        stage="topic_review",
+    )
     config = SplitConfig(min_pages=1, max_pages=10)
     batch = build_topic_change_review_batch(ir, config, workers=2)
     task = batch["batches"][0][0]
@@ -134,6 +139,7 @@ def test_confirmed_topic_change_becomes_a_hard_boundary(tmp_path):
             action="cut",
             element_id="el-003",
             reason="This would incorrectly combine two different learning units.",
+            allow_topic_merge=True,
         )
 
 

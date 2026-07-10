@@ -8,6 +8,7 @@ from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, Element
 from doc_splitter.naming import resolve_chunk_names
 from doc_splitter.structure_analyzer import ChunkPageRange
+from doc_splitter.storage import atomic_write_text
 
 
 def _render_element(el: Element) -> str:

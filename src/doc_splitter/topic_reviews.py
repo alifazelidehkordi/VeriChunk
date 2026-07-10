@@ -161,7 +161,9 @@ def build_topic_change_review_batch(
         )
 
     batches = [[] for _ in range(workers)] if tasks else []
-    reviewers_per_task = min(config.topic_change_min_votes, len(batches))
+    # ``workers`` controls concurrency, not vote count. Even one worker must
+    # receive every independent reviewer slot required for consensus.
+    reviewers_per_task = config.topic_change_min_votes if tasks else 0
     for index, task in enumerate(tasks):
         for reviewer_slot in range(reviewers_per_task):
             if batches:

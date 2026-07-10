@@ -143,12 +143,9 @@ doc-splitter run \
   --max-pages 10
 ```
 
-This parses the document, writes `ir.json`, creates `.split-session.json`, and prints the first boundary decision context.
+This parses the document, writes `ir.json`, creates `.split-session.json`, and prints the first required workflow context. Documents with topic-change candidates start in `topic_review`; documents without candidates start directly in `boundary`.
 
-Before committing boundaries, create independent topic-change tasks and give
-the returned batches to separate host agents concurrently. Collect their votes
-and submit them together; two `split` votes make the proposed safe cut a hard
-boundary.
+When the run starts in `topic_review`, create independent topic-change tasks and give the returned batches to separate host agents concurrently. Collect their votes and submit them together; two matching votes resolve each candidate. Boundary planning remains locked until every required candidate is resolved, and a confirmed `split` becomes a non-overridable hard boundary.
 
 ```bash
 doc-splitter topic-review-context --out ./output/book --workers 4
@@ -193,7 +190,7 @@ doc-splitter commit-boundary \
   --reason "The same mechanism continues into the next example."
 ```
 
-After boundaries are complete, write and verify chunks:
+After the final boundary changes the stage to `boundary_complete`, write and verify chunks:
 
 ```bash
 doc-splitter write --out ./output/book --output-format both
@@ -342,7 +339,7 @@ Returns JSON with `status`, `chunk_number`, `content_window`, `safe_candidates`,
 | `--element-id ID` | for `cut` | Safe candidate element ID. |
 | `--reason TEXT` | no | Human-readable rationale stored for auditability. |
 | `--allow-oversize` | for `extend` | Explicitly allow a concept to exceed `--max-pages`. |
-| `--allow-topic-merge` | for `cut` | Override a confirmed topic-change boundary with a specific reason. |
+| `--allow-topic-merge` | deprecated | Accepted for backward compatibility, but confirmed topic changes are never overridable. |
 
 ### `write` / `verify`
 
@@ -387,6 +384,19 @@ Stores `study-index-fa.md`, `study-index-en.md`, and `study-map.md` authored by 
 | `commit_study_index` | `index_fa`, `index_en`, `study_map`, optional `output_dir` | yes | Stores final bilingual indexes and a generic document-level study map. |
 
 The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`.
+
+## Workflow state safety
+
+The pipeline now enforces this state sequence:
+
+```text
+topic_review → boundary → boundary_complete → writing → verification
+             → content_analysis → index → complete
+```
+
+`write` is rejected when topic reviews are unresolved, the cursor has not reached the end of the IR, the boundary ranges contain a gap or overlap, or a confirmed topic change is missing from the plan. The writer no longer creates an implicit final chunk from unplanned remaining content.
+
+Session files are revisioned and written atomically under an advisory lock. A stale concurrent update fails with `SessionConflictError` instead of overwriting newer agent work. Saved run settings are preserved across commands; only CLI values supplied explicitly override them.
 
 ## Configuration
 
@@ -444,7 +454,7 @@ A PDF or `both` run may also include `.pdf` files per chunk.
 | File | Description |
 |---|---|
 | `ir.json` | Parsed document intermediate representation. |
-| `.split-session.json` | Boundary decisions, stage, config snapshot, chunk analyses. |
+| `.split-session.json` | Revisioned workflow state, boundary decisions, config snapshot, chunk analyses, and failure metadata. |
 | `manifest.json` | Chunk list, filenames, page ranges, element IDs, boundary reasons. |
 | `verification-report.json` | Integrity report: coverage, word-count checks, skipped pages, reconciliation notes. |
 | `semantic-review-report.json` | Summary of chunk analyses and any `needs_review` chunks. |
@@ -467,12 +477,13 @@ Each agent-authored `study-index-*.md` should include:
 
 1. `ducsplit` parses the document into ordered elements.
 2. It computes a window starting at the current cursor.
-3. It finds safe cut candidates after complete headings, paragraphs, lists, or tables.
+3. It finds safe cut candidates after complete headings, paragraphs, lists, tables, or images.
 4. The host agent reads the content window and candidate list.
-5. The host runs the topic-change review batches concurrently and commits the collected votes.
-6. The host agent chooses `cut` with an allowed `element_id`; confirmed topic changes cannot be crossed without an explicit topic-merge override.
-6. `ducsplit` validates the decision and moves the cursor.
-7. The loop continues until the document is fully covered.
+5. When required, the host runs topic-change review batches concurrently and commits the collected votes.
+6. Boundary planning unlocks only after every required review reaches consensus.
+7. The host agent chooses `cut` with an allowed `element_id`; confirmed topic changes cannot be crossed or overridden.
+8. `ducsplit` validates the decision and moves the cursor.
+9. The loop continues until the document is fully covered and the stage becomes `boundary_complete`.
 
 Example context returned to the host agent:
 

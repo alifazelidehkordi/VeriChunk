@@ -18,8 +18,7 @@ decide the conceptual boundary for you.
 6. **NEVER use generic or auto-generated reasons.** "auto-cut ~6000 words" is forbidden. Write a real conceptual reason explaining where the topic ends and why this cut is logical.
 7. The `reason` field must be your own writing — not copied from the parser, not auto-generated, not a word-count formula.
 8. A `required_topic_boundary` is backed by independent review votes. Cut at or
-   before it. Crossing it requires `allow_topic_merge: true` and a reason that
-   explains why the reviewers were wrong about the topic change.
+   before it. Confirmed topic changes cannot be crossed or overridden.
 
 ## Response format (JSON)
 

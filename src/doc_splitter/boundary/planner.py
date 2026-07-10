@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,6 +18,14 @@ from doc_splitter.ir.serialize import load_json, save_json
 from doc_splitter.section_titles import validate_boundary_reason
 from doc_splitter.structure_analyzer import analyze_structure, page_range_for_elements
 from doc_splitter.topic_reviews import find_topic_change_candidates
+from doc_splitter.storage import file_lock
+from doc_splitter.workflow import (
+    BOUNDARY,
+    BOUNDARY_COMPLETE,
+    TOPIC_REVIEW,
+    require_stage,
+    transition_stage,
+)
 
 SESSION_FILE = ".split-session.json"
 
@@ -41,6 +50,10 @@ class SplitSession:
     topic_change_reviews: dict[str, dict[str, Any]] = field(default_factory=dict)
     chunk_analyses: dict[str, dict[str, Any]] = field(default_factory=dict)
     chunks_read: list[int] = field(default_factory=list)
+    revision: int = 0
+    updated_at: str | None = None
+    last_error: str | None = None
+    failed_from: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -54,6 +67,10 @@ class SplitSession:
             "topic_change_reviews": self.topic_change_reviews,
             "chunk_analyses": self.chunk_analyses,
             "chunks_read": self.chunks_read,
+            "revision": self.revision,
+            "updated_at": self.updated_at,
+            "last_error": self.last_error,
+            "failed_from": self.failed_from,
         }
 
     @classmethod
@@ -69,6 +86,10 @@ class SplitSession:
             topic_change_reviews=dict(data.get("topic_change_reviews", {})),
             chunk_analyses=dict(data.get("chunk_analyses", {})),
             chunks_read=list(data.get("chunks_read", [])),
+            revision=int(data.get("revision", 0)),
+            updated_at=data.get("updated_at"),
+            last_error=data.get("last_error"),
+            failed_from=data.get("failed_from"),
         )
 
 
@@ -76,19 +97,66 @@ def session_path(output_dir: Path) -> Path:
     return output_dir / SESSION_FILE
 
 
+class SessionConflictError(RuntimeError):
+    """Raised when a stale in-memory session would overwrite newer state."""
+
+
+def _session_lock_path(output_dir: Path) -> Path:
+    return output_dir / f"{SESSION_FILE}.lock"
+
+
 def save_session(session: SplitSession, output_dir: Path) -> None:
-    save_json(session.to_dict(), session_path(output_dir))
+    output_dir = output_dir.expanduser().resolve()
+    path = session_path(output_dir)
+    with file_lock(_session_lock_path(output_dir)):
+        current_revision: int | None = None
+        if path.exists():
+            current_revision = int(load_json(path).get("revision", 0))
+            if current_revision != session.revision:
+                raise SessionConflictError(
+                    "Session changed since it was loaded "
+                    f"(expected revision {session.revision}, found {current_revision}). "
+                    "Reload the session and retry the operation."
+                )
+        elif session.revision != 0:
+            raise SessionConflictError(
+                f"Session file is missing but in-memory revision is {session.revision}."
+            )
+
+        next_revision = (current_revision or 0) + 1
+        payload = session.to_dict()
+        payload["revision"] = next_revision
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        payload["output_dir"] = str(output_dir)
+        save_json(payload, path)
+        session.revision = next_revision
+        session.updated_at = payload["updated_at"]
+        session.output_dir = str(output_dir)
 
 
-def record_chunk_read(output_dir: Path, chunk_id: int) -> None:
-    session = load_session(output_dir)
-    if chunk_id not in session.chunks_read:
+def record_chunk_read(output_dir: Path, chunk_id: int, *, retries: int = 5) -> None:
+    """Record a read without silently losing a concurrent agent update."""
+    last_conflict: SessionConflictError | None = None
+    for _ in range(max(1, retries)):
+        session = load_session(output_dir)
+        if chunk_id in session.chunks_read:
+            return
         session.chunks_read.append(chunk_id)
-        save_session(session, output_dir)
+        try:
+            save_session(session, output_dir)
+            return
+        except SessionConflictError as exc:
+            last_conflict = exc
+    assert last_conflict is not None
+    raise last_conflict
 
 
 def load_session(output_dir: Path) -> SplitSession:
-    return SplitSession.from_dict(load_json(session_path(output_dir)))
+    output_dir = output_dir.expanduser().resolve()
+    session = SplitSession.from_dict(load_json(session_path(output_dir)))
+    # The command's current --out path is authoritative; sessions remain movable.
+    session.output_dir = str(output_dir)
+    return session
 
 
 def _is_page_number_artifact(el: Any) -> bool:
@@ -142,6 +210,47 @@ def _next_confirmed_topic_boundary(
     return min(confirmed, key=lambda review: int(review["boundary_index"]))
 
 
+def get_topic_review_progress(
+    ir: DocumentIR,
+    session: SplitSession,
+    config: SplitConfig,
+) -> dict[str, Any]:
+    candidates = find_topic_change_candidates(ir, config)
+    unresolved: list[dict[str, Any]] = []
+    resolved = 0
+    for candidate in candidates:
+        stored = session.topic_change_reviews.get(candidate.review_id)
+        consensus = stored.get("consensus") if stored else None
+        votes = stored.get("votes", {}) if stored else {}
+        matching_votes = sum(
+            1
+            for vote in votes.values()
+            if vote.get("decision") == consensus
+        )
+        if (
+            consensus in {"split", "merge"}
+            and matching_votes >= config.topic_change_min_votes
+        ):
+            resolved += 1
+        else:
+            unresolved.append(
+                {
+                    "review_id": candidate.review_id,
+                    "heading_element_id": candidate.heading_element_id,
+                    "heading_text": candidate.heading_text,
+                    "boundary_element_id": candidate.boundary_element_id,
+                    "boundary_index": candidate.boundary_index,
+                    "consensus": consensus or "missing",
+                }
+            )
+    return {
+        "total": len(candidates),
+        "resolved": resolved,
+        "unresolved": unresolved,
+        "complete": not unresolved,
+    }
+
+
 def commit_topic_change_reviews(
     ir: DocumentIR,
     session: SplitSession,
@@ -149,6 +258,7 @@ def commit_topic_change_reviews(
     reviews: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Persist independent semantic review verdicts from parallel host agents."""
+    require_stage(session, TOPIC_REVIEW, "commit topic-change reviews")
     candidates = {
         candidate.review_id: candidate
         for candidate in find_topic_change_candidates(ir, config)
@@ -193,6 +303,9 @@ def commit_topic_change_reviews(
         else:
             stored["consensus"] = "pending"
         committed += 1
+    progress = get_topic_review_progress(ir, session, config)
+    if progress["complete"]:
+        transition_stage(session, BOUNDARY)
     save_session(session, Path(session.output_dir))
     split_count = sum(
         1
@@ -200,9 +313,15 @@ def commit_topic_change_reviews(
         if review.get("consensus") == "split"
     )
     return {
-        "status": "topic_reviews_committed",
+        "status": (
+            "topic_reviews_complete"
+            if progress["complete"]
+            else "topic_reviews_committed"
+        ),
         "committed": committed,
         "confirmed_topic_boundaries": split_count,
+        "review_progress": progress,
+        "next_stage": session.stage,
     }
 
 
@@ -228,8 +347,21 @@ def get_boundary_context(
     session: SplitSession,
     config: SplitConfig,
 ) -> dict[str, Any]:
+    require_stage(
+        session,
+        {BOUNDARY, BOUNDARY_COMPLETE},
+        "request boundary context",
+    )
     if session.cursor_index >= len(ir.elements):
-        return {"status": "complete", "boundaries": session.boundaries}
+        if session.stage == BOUNDARY:
+            transition_stage(session, BOUNDARY_COMPLETE)
+            save_session(session, Path(session.output_dir))
+        return {
+            "status": "complete",
+            "stage": session.stage,
+            "boundaries": session.boundaries,
+        }
+    require_stage(session, BOUNDARY, "request the next boundary decision")
 
     structure = analyze_structure(ir, config)
     window_words = session.window_pages * config.words_per_page
@@ -276,7 +408,9 @@ def get_boundary_context(
         not candidates and end_index < len(ir.elements) - 1
     )
     if not candidates and not requires_oversize_permission:
-        tail_end = len(ir.elements) - 2
+        # The final element must be an explicit candidate now that the writer no
+        # longer appends an implicit unplanned tail chunk.
+        tail_end = len(ir.elements) - 1
         if tail_end >= session.cursor_index:
             end_index = max(end_index, tail_end)
             candidates = find_safe_candidates(ir, session.cursor_index, tail_end)
@@ -326,6 +460,7 @@ def commit_boundary(
     allow_oversize: bool = False,
     allow_topic_merge: bool = False,
 ) -> dict[str, Any]:
+    require_stage(session, BOUNDARY, "commit a boundary decision")
     if action == "extend":
         if not allow_oversize:
             raise ValueError(
@@ -360,15 +495,15 @@ def commit_boundary(
         if review.get("consensus") == "split"
         and session.cursor_index <= int(review.get("boundary_index", -1)) < end_index
     ]
-    if confirmed_topic_boundaries and not allow_topic_merge:
+    if confirmed_topic_boundaries:
         nearest = min(
             confirmed_topic_boundaries,
             key=lambda review: int(review["boundary_index"]),
         )
         raise ValueError(
             "Cut would cross a confirmed topic change before "
-            f"{nearest['heading_text']}. Cut at {nearest['boundary_element_id']} "
-            "or set allow_topic_merge=True with a specific reason."
+            f"{nearest['heading_text']}. Cut at {nearest['boundary_element_id']}; "
+            "confirmed topic changes cannot be overridden."
         )
     structure = analyze_structure(ir, config)
     _, candidates = candidates_in_word_window(
@@ -435,8 +570,13 @@ def commit_boundary(
         previous["trailing_page_number_merged"] = True
         session.cursor_index = end_index + 1
         session.window_pages = config.boundary_window_pages
+        transition_stage(session, BOUNDARY_COMPLETE)
         save_session(session, Path(session.output_dir))
-        return {"status": "complete", "boundaries": session.boundaries}
+        return {
+            "status": "complete",
+            "stage": session.stage,
+            "boundaries": session.boundaries,
+        }
 
     start_page, end_page = page_range_for_elements(
         ir, session.cursor_index, end_index, structure.element_pages
@@ -458,8 +598,18 @@ def commit_boundary(
     )
     session.cursor_index = end_index + 1
     session.window_pages = config.boundary_window_pages
+    if session.cursor_index >= len(ir.elements):
+        transition_stage(session, BOUNDARY_COMPLETE)
     save_session(session, Path(session.output_dir))
 
     if session.cursor_index >= len(ir.elements):
-        return {"status": "complete", "boundaries": session.boundaries}
-    return {"status": "continue", "cursor_index": session.cursor_index}
+        return {
+            "status": "complete",
+            "stage": session.stage,
+            "boundaries": session.boundaries,
+        }
+    return {
+        "status": "continue",
+        "stage": session.stage,
+        "cursor_index": session.cursor_index,
+    }

@@ -62,7 +62,7 @@ server.registerTool(
   "split_document",
   {
     title: "Split document",
-    description: "Parse a PDF/DOCX and start the boundary planning session.",
+    description: "Parse a PDF/DOCX and start the enforced topic-review/boundary workflow.",
     inputSchema: {
       file_path: z.string(),
       min_pages: minPages,
@@ -90,7 +90,7 @@ server.registerTool(
   "get_boundary_context",
   {
     title: "Get boundary context",
-    description: "Return content window and safe cut candidates for the host agent.",
+    description: "Return content window and safe cut candidates after all required topic reviews are resolved.",
     inputSchema: { output_dir: outDir },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -113,7 +113,7 @@ server.registerTool(
       element_id: z.string().optional(),
       reason: z.string().optional(),
       allow_oversize: z.boolean().optional(),
-      allow_topic_merge: z.boolean().optional(),
+      allow_topic_merge: z.boolean().optional().describe("Deprecated; confirmed topic changes cannot be overridden."),
     },
     annotations: { readOnlyHint: false, openWorldHint: false },
   },
@@ -176,7 +176,7 @@ server.registerTool(
   "write_chunks",
   {
     title: "Write chunks",
-    description: "Write chunks and run verification. Ask the user which format they want, then provide output_format explicitly.",
+    description: "Write and verify only after topic reviews and exact boundary coverage are complete. Ask the user which format they want, then provide output_format explicitly.",
     inputSchema: {
       output_dir: outDir,
       output_format: z.enum(["markdown", "pdf", "both"]),

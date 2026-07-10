@@ -30,6 +30,7 @@ from doc_splitter.orchestrator import (
 )
 from doc_splitter.verifier import verify_output
 from doc_splitter.topic_reviews import build_topic_change_review_batch
+from doc_splitter.workflow import TOPIC_REVIEW, require_stage
 
 _SESSION_RESTORE_COMMANDS = frozenset(
     {
@@ -49,10 +50,12 @@ _SESSION_RESTORE_COMMANDS = frozenset(
 
 
 def _add_config_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--min-pages", type=int, default=5)
-    parser.add_argument("--max-pages", type=int, default=10)
+    # None distinguishes an omitted option from an explicit override when a
+    # command restores the run configuration from .split-session.json.
+    parser.add_argument("--min-pages", type=int, default=None)
+    parser.add_argument("--max-pages", type=int, default=None)
     parser.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
-    parser.add_argument("--reading-speed-wpm", type=int, default=80,
+    parser.add_argument("--reading-speed-wpm", type=int, default=None,
                         help="Study reading speed in words per minute (default: 80 for technical/medical content)")
     parser.add_argument(
         "--output-format",
@@ -70,16 +73,27 @@ def _add_config_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _config_from_args(args: argparse.Namespace) -> SplitConfig:
+    defaults = SplitConfig()
     return SplitConfig(
-        min_pages=args.min_pages,
-        max_pages=args.max_pages,
+        min_pages=(
+            args.min_pages if getattr(args, "min_pages", None) is not None
+            else defaults.min_pages
+        ),
+        max_pages=(
+            args.max_pages if getattr(args, "max_pages", None) is not None
+            else defaults.max_pages
+        ),
         output_dir=args.output_dir,
-        reading_speed_wpm=getattr(args, "reading_speed_wpm", 200),
-        output_format=getattr(args, "output_format", None) or "markdown",
+        reading_speed_wpm=(
+            args.reading_speed_wpm
+            if getattr(args, "reading_speed_wpm", None) is not None
+            else defaults.reading_speed_wpm
+        ),
+        output_format=getattr(args, "output_format", None) or defaults.output_format,
         overlap_boundary_pages=(
             args.overlap_boundary_pages
             if getattr(args, "overlap_boundary_pages", None) is not None
-            else 1
+            else defaults.overlap_boundary_pages
         ),
     )
 
@@ -94,9 +108,12 @@ def _resolve_config(args: argparse.Namespace) -> SplitConfig:
             session = load_session(base.output_dir)
             restored = config_from_dict(session.config)
             restored.output_dir = base.output_dir
-            restored.min_pages = base.min_pages
-            restored.max_pages = base.max_pages
-            restored.reading_speed_wpm = base.reading_speed_wpm
+            if getattr(args, "min_pages", None) is not None:
+                restored.min_pages = args.min_pages
+            if getattr(args, "max_pages", None) is not None:
+                restored.max_pages = args.max_pages
+            if getattr(args, "reading_speed_wpm", None) is not None:
+                restored.reading_speed_wpm = args.reading_speed_wpm
             if getattr(args, "output_format", None):
                 restored.output_format = args.output_format
             if getattr(args, "overlap_boundary_pages", None) is not None:
@@ -114,14 +131,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     config = _resolve_config(args)
     input_path = args.input.expanduser().resolve()
     ir = parse_document(input_path, config)
-    init_session(input_path, config)
-    ctx = get_boundary_context(ir, load_session(config.output_dir), config)
-    print(json.dumps({"stage": "boundary", "context": ctx}, ensure_ascii=False, indent=2))
-    print(
-        "\nNext: use boundary-context / commit-boundary until status=complete, "
-        "then run: doc-splitter write",
-        file=sys.stderr,
-    )
+    session = init_session(input_path, config, ir)
+    if session.stage == TOPIC_REVIEW:
+        ctx = build_topic_change_review_batch(ir, config, workers=4)
+        next_step = (
+            "Next: run topic-review-context and commit-topic-reviews until every "
+            "candidate is resolved; boundary planning will then unlock."
+        )
+    else:
+        ctx = get_boundary_context(ir, session, config)
+        next_step = (
+            "Next: use boundary-context / commit-boundary until status=complete, "
+            "then run: doc-splitter write"
+        )
+    print(json.dumps({"stage": session.stage, "context": ctx}, ensure_ascii=False, indent=2))
+    print(f"\n{next_step}", file=sys.stderr)
     return 0
 
 
@@ -161,6 +185,8 @@ def cmd_commit_boundary(args: argparse.Namespace) -> int:
 
 def cmd_topic_review_context(args: argparse.Namespace) -> int:
     config = _resolve_config(args)
+    session = load_session(config.output_dir)
+    require_stage(session, TOPIC_REVIEW, "request topic-review context")
     ir = load_ir(config.output_dir / "ir.json")
     batch = build_topic_change_review_batch(ir, config, args.workers)
     print(json.dumps(batch, ensure_ascii=False, indent=2))
@@ -209,10 +235,7 @@ def cmd_get_chunk(args: argparse.Namespace) -> int:
     if chunk is None:
         raise ValueError(f"Chunk {args.chunk_id} not found in manifest")
 
-    try:
-        record_chunk_read(output_dir, args.chunk_id)
-    except Exception:
-        pass
+    record_chunk_read(output_dir, args.chunk_id)
 
     content = read_chunk_content(output_dir, chunk)
     payload = {
@@ -318,7 +341,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_cb.add_argument(
         "--allow-topic-merge",
         action="store_true",
-        help="Allow a cut to cross a confirmed topic change; use only with a specific reason.",
+        help=argparse.SUPPRESS,
     )
     _add_config_args(p_cb)
     p_cb.set_defaults(func=cmd_commit_boundary)

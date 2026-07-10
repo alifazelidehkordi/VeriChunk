@@ -15,6 +15,8 @@ from doc_splitter.boundary.planner import SplitSession, load_session, save_sessi
 from doc_splitter.config import SplitConfig
 from doc_splitter.content.analyzer import read_chunk_content
 from doc_splitter.section_titles import validate_analysis
+from doc_splitter.storage import atomic_write_text
+from doc_splitter.workflow import COMPLETE, INDEX, require_stage, transition_stage
 
 
 def _page_label(chunk: dict[str, Any]) -> str:
@@ -87,6 +89,7 @@ def _validate_ready_for_index(
 def get_index_context(output_dir: Path, config: SplitConfig) -> dict[str, Any]:
     manifest = _load_manifest(output_dir)
     session = load_session(output_dir)
+    require_stage(session, INDEX, "build index context")
     _validate_ready_for_index(manifest, session)
 
     prompt_path = Path(__file__).parent / "index" / "prompts" / "index.md"
@@ -218,6 +221,7 @@ def commit_study_indexes(
 ) -> tuple[Path, Path, Path]:
     manifest = _load_manifest(output_dir)
     session = load_session(output_dir)
+    require_stage(session, INDEX, "commit study indexes")
     _validate_ready_for_index(manifest, session)
     _validate_agent_index(index_fa, lang="Persian", manifest=manifest)
     _validate_agent_index(index_en, lang="English", manifest=manifest)
@@ -226,10 +230,10 @@ def commit_study_indexes(
     fa_path = output_dir / "study-index-fa.md"
     en_path = output_dir / "study-index-en.md"
     map_path = output_dir / "study-map.md"
-    fa_path.write_text(index_fa.rstrip() + "\n", encoding="utf-8")
-    en_path.write_text(index_en.rstrip() + "\n", encoding="utf-8")
-    map_path.write_text(study_map.rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(fa_path, index_fa.rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(en_path, index_en.rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(map_path, study_map.rstrip() + "\n", encoding="utf-8")
 
-    session.stage = "complete"
+    transition_stage(session, COMPLETE)
     save_session(session, output_dir)
     return fa_path, en_path, map_path

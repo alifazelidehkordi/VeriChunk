@@ -125,3 +125,24 @@ def test_commit_chunk_analysis_rejects_empty_reason(tmp_path: Path):
             study_focus_en="Educational study focus in English with key concepts.",
             coherence="confident",
         )
+
+
+def test_invalid_chunk_analysis_does_not_mutate_session(tmp_path: Path):
+    _setup_session(tmp_path, total_chunks=1)
+    before = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
+
+    with pytest.raises(ValueError, match="Chunk 99 not found"):
+        commit_chunk_analysis(
+            tmp_path,
+            99,
+            topic_fa="عنوان معتبر",
+            topic_en="Valid session title",
+            study_focus_fa="تمرکز آموزشی معتبر شامل مفاهیم، مثال‌ها و اهداف اصلی جلسه.",
+            study_focus_en="A valid educational focus covering concepts, examples, and learning goals.",
+            coherence="confident",
+            reason="The supplied analysis describes a coherent educational unit.",
+        )
+
+    after = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
+    assert after["chunk_analyses"] == before["chunk_analyses"]
+    assert after["revision"] == before["revision"]
