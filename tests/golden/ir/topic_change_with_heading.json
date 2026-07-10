@@ -1,0 +1,85 @@
+{
+  "elements": [
+    {
+      "id": "el-001",
+      "type": "heading",
+      "level": 1,
+      "text": "CELL BIOLOGY",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 2,
+      "cumulative_word_count": 2
+    },
+    {
+      "id": "el-002",
+      "type": "paragraph",
+      "text": "Cells use membranes to regulate transport.",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 6,
+      "cumulative_word_count": 8
+    },
+    {
+      "id": "el-003",
+      "type": "paragraph",
+      "text": "Membrane proteins support diffusion and signaling.",
+      "page_number": 2,
+      "bbox": null,
+      "word_count": 6,
+      "cumulative_word_count": 14
+    },
+    {
+      "id": "el-004",
+      "type": "paragraph",
+      "text": "Organelles divide metabolic responsibilities.",
+      "page_number": 3,
+      "bbox": null,
+      "word_count": 4,
+      "cumulative_word_count": 18
+    },
+    {
+      "id": "el-005",
+      "type": "paragraph",
+      "text": "This concludes the cell biology learning unit.",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 7,
+      "cumulative_word_count": 25
+    },
+    {
+      "id": "el-006",
+      "type": "heading",
+      "level": 1,
+      "text": "RENAL PHYSIOLOGY",
+      "page_number": 5,
+      "bbox": null,
+      "word_count": 2,
+      "cumulative_word_count": 27
+    },
+    {
+      "id": "el-007",
+      "type": "paragraph",
+      "text": "The nephron filters plasma and adjusts electrolytes.",
+      "page_number": 5,
+      "bbox": null,
+      "word_count": 7,
+      "cumulative_word_count": 34
+    },
+    {
+      "id": "el-008",
+      "type": "paragraph",
+      "text": "Tubular transport determines final urine composition.",
+      "page_number": 6,
+      "bbox": null,
+      "word_count": 6,
+      "cumulative_word_count": 40
+    }
+  ],
+  "meta": {
+    "source_file": "topic_change_with_heading.pdf",
+    "total_word_count": 40,
+    "estimated_total_pages": 6,
+    "skipped_pages": [],
+    "reconciliation_notes": []
+  }
+}

@@ -1,0 +1,246 @@
+{
+  "elements": [
+    {
+      "id": "el-001",
+      "type": "heading",
+      "level": 1,
+      "text": "LONG CONTINUOUS DERIVATION",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 3,
+      "cumulative_word_count": 3
+    },
+    {
+      "id": "el-002",
+      "type": "paragraph",
+      "text": "Page 1: the same derivation continues without introducing a new topic.",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 14
+    },
+    {
+      "id": "el-003",
+      "type": "paragraph",
+      "text": "Page 2: the same derivation continues without introducing a new topic.",
+      "page_number": 2,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 25
+    },
+    {
+      "id": "el-004",
+      "type": "paragraph",
+      "text": "Page 3: the same derivation continues without introducing a new topic.",
+      "page_number": 3,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 36
+    },
+    {
+      "id": "el-005",
+      "type": "paragraph",
+      "text": "Page 4: the same derivation continues without introducing a new topic.",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 47
+    },
+    {
+      "id": "el-006",
+      "type": "paragraph",
+      "text": "Page 5: the same derivation continues without introducing a new topic.",
+      "page_number": 5,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 58
+    },
+    {
+      "id": "el-007",
+      "type": "paragraph",
+      "text": "Page 6: the same derivation continues without introducing a new topic.",
+      "page_number": 6,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 69
+    },
+    {
+      "id": "el-008",
+      "type": "paragraph",
+      "text": "Page 7: the same derivation continues without introducing a new topic.",
+      "page_number": 7,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 80
+    },
+    {
+      "id": "el-009",
+      "type": "paragraph",
+      "text": "Page 8: the same derivation continues without introducing a new topic.",
+      "page_number": 8,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 91
+    },
+    {
+      "id": "el-010",
+      "type": "paragraph",
+      "text": "Page 9: the same derivation continues without introducing a new topic.",
+      "page_number": 9,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 102
+    },
+    {
+      "id": "el-011",
+      "type": "paragraph",
+      "text": "Page 10: the same derivation continues without introducing a new topic.",
+      "page_number": 10,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 113
+    },
+    {
+      "id": "el-012",
+      "type": "paragraph",
+      "text": "Page 11: the same derivation continues without introducing a new topic.",
+      "page_number": 11,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 124
+    },
+    {
+      "id": "el-013",
+      "type": "paragraph",
+      "text": "Page 12: the same derivation continues without introducing a new topic.",
+      "page_number": 12,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 135
+    },
+    {
+      "id": "el-014",
+      "type": "paragraph",
+      "text": "Page 13: the same derivation continues without introducing a new topic.",
+      "page_number": 13,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 146
+    },
+    {
+      "id": "el-015",
+      "type": "paragraph",
+      "text": "Page 14: the same derivation continues without introducing a new topic.",
+      "page_number": 14,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 157
+    },
+    {
+      "id": "el-016",
+      "type": "paragraph",
+      "text": "Page 15: the same derivation continues without introducing a new topic.",
+      "page_number": 15,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 168
+    },
+    {
+      "id": "el-017",
+      "type": "paragraph",
+      "text": "Page 16: the same derivation continues without introducing a new topic.",
+      "page_number": 16,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 179
+    },
+    {
+      "id": "el-018",
+      "type": "paragraph",
+      "text": "Page 17: the same derivation continues without introducing a new topic.",
+      "page_number": 17,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 190
+    },
+    {
+      "id": "el-019",
+      "type": "paragraph",
+      "text": "Page 18: the same derivation continues without introducing a new topic.",
+      "page_number": 18,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 201
+    },
+    {
+      "id": "el-020",
+      "type": "paragraph",
+      "text": "Page 19: the same derivation continues without introducing a new topic.",
+      "page_number": 19,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 212
+    },
+    {
+      "id": "el-021",
+      "type": "paragraph",
+      "text": "Page 20: the same derivation continues without introducing a new topic.",
+      "page_number": 20,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 223
+    },
+    {
+      "id": "el-022",
+      "type": "paragraph",
+      "text": "Page 21: the same derivation continues without introducing a new topic.",
+      "page_number": 21,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 234
+    },
+    {
+      "id": "el-023",
+      "type": "paragraph",
+      "text": "Page 22: the same derivation continues without introducing a new topic.",
+      "page_number": 22,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 245
+    },
+    {
+      "id": "el-024",
+      "type": "paragraph",
+      "text": "Page 23: the same derivation continues without introducing a new topic.",
+      "page_number": 23,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 256
+    },
+    {
+      "id": "el-025",
+      "type": "paragraph",
+      "text": "Page 24: the same derivation continues without introducing a new topic.",
+      "page_number": 24,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 267
+    },
+    {
+      "id": "el-026",
+      "type": "paragraph",
+      "text": "Page 25: the same derivation continues without introducing a new topic.",
+      "page_number": 25,
+      "bbox": null,
+      "word_count": 11,
+      "cumulative_word_count": 278
+    }
+  ],
+  "meta": {
+    "source_file": "continuous_topic_25_pages.pdf",
+    "total_word_count": 278,
+    "estimated_total_pages": 25,
+    "skipped_pages": [],
+    "reconciliation_notes": []
+  }
+}

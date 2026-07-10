@@ -1,0 +1,59 @@
+{
+  "elements": [
+    {
+      "id": "el-001",
+      "type": "heading",
+      "level": 1,
+      "text": "NEURAL PATHWAYS",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 2,
+      "cumulative_word_count": 2
+    },
+    {
+      "id": "el-002",
+      "type": "paragraph",
+      "text": "The diagram summarizes the pathway just described.",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 7,
+      "cumulative_word_count": 9
+    },
+    {
+      "id": "el-003",
+      "type": "image",
+      "ref": "images/neural-pathway.png",
+      "caption": "Summary of the neural pathway",
+      "page_number": 3,
+      "bbox": null,
+      "word_count": 5,
+      "cumulative_word_count": 14
+    },
+    {
+      "id": "el-004",
+      "type": "heading",
+      "level": 1,
+      "text": "ENDOCRINE FEEDBACK",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 2,
+      "cumulative_word_count": 16
+    },
+    {
+      "id": "el-005",
+      "type": "paragraph",
+      "text": "Hormonal feedback controls endocrine output.",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 5,
+      "cumulative_word_count": 21
+    }
+  ],
+  "meta": {
+    "source_file": "image_on_topic_boundary.pdf",
+    "total_word_count": 21,
+    "estimated_total_pages": 4,
+    "skipped_pages": [],
+    "reconciliation_notes": []
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "purpose": "Phase-zero regression and acceptance corpus",
+  "desired_page_policy": {
+    "target_min_pages": 5,
+    "preferred_max_pages": 12,
+    "soft_max_pages": 13,
+    "hard_max_pages": 20,
+    "topic_change_overrides_minimum": true,
+    "extension_after_soft_max_requires_semantic_evidence": true
+  },
+  "cases": [
+    {
+      "id": "topic-change-with-heading",
+      "kind": "ir",
+      "description": "A clear independent topic begins at a major heading.",
+      "source": "ir/topic_change_with_heading.json",
+      "expected": {
+        "topic_boundaries_after": [
+          "el-005"
+        ]
+      }
+    },
+    {
+      "id": "topic-change-without-heading",
+      "kind": "ir",
+      "description": "The learning objective changes without any heading marker.",
+      "source": "ir/topic_change_without_heading.json",
+      "expected": {
+        "topic_boundaries_after": [
+          "el-004"
+        ]
+      }
+    },
+    {
+      "id": "subheading-same-topic",
+      "kind": "ir",
+      "description": "A worked-example subheading must not split one coherent topic.",
+      "source": "ir/subheading_same_topic.json",
+      "expected": {
+        "topic_boundaries_after": [],
+        "must_not_split_after": [
+          "el-004"
+        ]
+      }
+    },
+    {
+      "id": "early-topic-change-before-minimum",
+      "kind": "ir",
+      "description": "A real topic change at page 3 overrides a five-page target minimum.",
+      "source": "ir/early_topic_change_before_minimum.json",
+      "config": {
+        "target_min_pages": 5
+      },
+      "expected": {
+        "topic_boundaries_after": [
+          "el-003"
+        ]
+      }
+    },
+    {
+      "id": "continuous-topic-17-pages",
+      "kind": "ir",
+      "description": "One topic may exceed 13 pages only when semantic continuity is confirmed.",
+      "source": "ir/continuous_topic_17_pages.json",
+      "expected": {
+        "topic_boundaries_after": [],
+        "page_policy": {
+          "allowed_single_chunk_pages": 17,
+          "requires_extension_evidence": true
+        }
+      }
+    },
+    {
+      "id": "continuous-topic-25-pages",
+      "kind": "ir",
+      "description": "A continuous topic still requires a forced continuation split at 20 pages.",
+      "source": "ir/continuous_topic_25_pages.json",
+      "expected": {
+        "topic_boundaries_after": [],
+        "page_policy": {
+          "hard_max_pages": 20,
+          "forced_size_split": true,
+          "continues_to_next": true
+        }
+      }
+    },
+    {
+      "id": "table-on-topic-boundary",
+      "kind": "ir",
+      "description": "A completed table stays with the topic before the transition.",
+      "source": "ir/table_on_topic_boundary.json",
+      "expected": {
+        "topic_boundaries_after": [
+          "el-003"
+        ]
+      }
+    },
+    {
+      "id": "image-on-topic-boundary",
+      "kind": "ir",
+      "description": "A standalone image remains attached to the preceding topic.",
+      "source": "ir/image_on_topic_boundary.json",
+      "expected": {
+        "topic_boundaries_after": [
+          "el-003"
+        ]
+      }
+    },
+    {
+      "id": "pdf-blank-middle-page",
+      "kind": "pdf",
+      "description": "A blank PDF page is flagged without crashing the parser.",
+      "source": "source/blank-middle-page.pdf",
+      "expected": {
+        "total_pages": 3,
+        "skipped_pages": [
+          2
+        ]
+      }
+    },
+    {
+      "id": "docx-list-and-standalone-image",
+      "kind": "docx",
+      "description": "Standard Word bullets and an image-only paragraph are preserved.",
+      "source": "source/list-and-standalone-image.docx",
+      "expected": {
+        "minimum_element_counts": {
+          "list": 1,
+          "image": 1,
+          "table": 1
+        },
+        "list_items": [
+          "First standard Word bullet",
+          "Second standard Word bullet"
+        ]
+      }
+    }
+  ]
+}
