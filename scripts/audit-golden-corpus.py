@@ -143,7 +143,7 @@ def _audit_page_policy(corpus: dict) -> dict:
     observed = {
         "target_min_pages": current.min_pages,
         "preferred_max_pages": current.max_pages,
-        "soft_max_pages": None,
+        "soft_max_pages": current.soft_max_pages,
         "hard_max_pages": current.hard_max_pages,
     }
     comparable = {

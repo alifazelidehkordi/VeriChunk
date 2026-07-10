@@ -1,16 +1,13 @@
-"""Independent topic-change review tasks for parallel host-agent work."""
+"""Semantic topic-change review tasks for parallel agent work."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 from typing import Any
 
-from doc_splitter.boundary.safe_candidates import find_safe_candidates
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, Element
-from doc_splitter.section_titles import looks_like_section_title, normalize_title_text
-from doc_splitter.structure_analyzer import analyze_structure
+from doc_splitter.semantic import build_semantic_map, find_semantic_change_points
 
 
 @dataclass(frozen=True)
@@ -23,105 +20,82 @@ class TopicChangeCandidate:
     boundary_index: int
     boundary_page: int | None
     heading_page: int | None
+    candidate_kind: str = "semantic_shift"
+    semantic_score: float = 0.0
+    lexical_discontinuity: float = 0.0
+    before_element_ids: tuple[str, ...] = ()
+    after_element_ids: tuple[str, ...] = ()
+    shared_terms: tuple[str, ...] = ()
+    before_terms: tuple[str, ...] = ()
+    after_terms: tuple[str, ...] = ()
+    signals: tuple[str, ...] = ()
 
 
-_BOLD_SPAN_RE = re.compile(r"\*\*([^*]+)\*\*")
-
-
-def _uppercase_ratio(text: str) -> float:
-    letters = [char for char in text if char.isalpha()]
-    if not letters:
-        return 0.0
-    return sum(char.isupper() for char in letters) / len(letters)
-
-
-def _major_title(text: str, level: int | None) -> str | None:
-    title = normalize_title_text(text)
-    if not title:
-        return None
-    # Uppercase headings are the most reliable chapter signal in PDF extraction,
-    # including long headings that intentionally exceed section-title heuristics.
-    if 5 <= len(title) <= 320 and _uppercase_ratio(title) >= 0.6:
-        return title
-    if not looks_like_section_title(title):
-        return None
-    # Level 1/2 titles are document-level structure. PDFs often label major
-    # chapters as level 3, where all-caps is the more reliable signal.
-    if level is not None and level <= 2:
-        return title
-    if _uppercase_ratio(title) >= 0.6:
-        return title
-    return None
-
-
-def _topic_marker_text(el: Element) -> str | None:
-    if el.type == "heading":
-        return _major_title(el.text, el.level)
-    if el.type != "paragraph":
-        return None
-    # Some PDF extractors append a bold chapter title to the preceding line.
-    for match in reversed(_BOLD_SPAN_RE.findall(el.text)):
-        title = _major_title(match, None)
-        if title:
-            return title
-    return None
-
-
-def _text_excerpt(elements: list[Element], limit: int = 900) -> str:
+def _text_excerpt(elements: list[Element], limit: int) -> str:
     parts: list[str] = []
+    size = 0
     for el in elements:
-        if el.type == "heading":
-            value = el.text
-        elif el.type == "paragraph":
+        if el.type in {"heading", "paragraph"}:
             value = el.text
         elif el.type == "list":
-            value = "; ".join(el.items[:4])
+            value = "; ".join(el.items)
         elif el.type == "table":
-            value = " | ".join(" ".join(row) for row in el.rows[:2])
+            value = " | ".join(" ".join(row) for row in el.rows)
         else:
             value = el.caption or el.ref or ""
         value = " ".join(value.split())
-        if value:
-            parts.append(value)
-        if sum(len(part) for part in parts) >= limit:
+        if not value:
+            continue
+        prefix = f"[{el.id}] "
+        remaining = limit - size
+        if remaining <= len(prefix):
             break
-    text = "\n\n".join(parts)
-    return text[:limit]
+        rendered = prefix + value[: max(0, remaining - len(prefix))]
+        parts.append(rendered)
+        size += len(rendered)
+        if size >= limit:
+            break
+    return "\n\n".join(parts)
 
 
 def find_topic_change_candidates(
     ir: DocumentIR,
     config: SplitConfig,
 ) -> list[TopicChangeCandidate]:
-    """Find likely major topic changes and the safe cut immediately before each."""
-    structure = analyze_structure(ir, config)
-    candidates: list[TopicChangeCandidate] = []
-    seen_boundaries: set[int] = set()
+    """Find heading and heading-free semantic change points.
 
-    for heading_index, el in enumerate(ir.elements):
-        heading_text = _topic_marker_text(el)
-        if heading_index == 0 or not heading_text:
-            continue
-        safe_before = find_safe_candidates(ir, 0, heading_index - 1)
-        if not safe_before:
-            continue
-        boundary = safe_before[-1]
-        if boundary.index in seen_boundaries:
-            continue
-        seen_boundaries.add(boundary.index)
+    This function deliberately returns candidates, not final boundaries. Every
+    result must still be resolved by independent review consensus.
+    """
+    candidates: list[TopicChangeCandidate] = []
+    for score in find_semantic_change_points(ir, config):
         candidates.append(
             TopicChangeCandidate(
-                review_id=f"topic-change:{el.id}",
-                heading_element_id=el.id,
-                heading_index=heading_index,
-                heading_text=heading_text,
-                boundary_element_id=boundary.element_id,
-                boundary_index=boundary.index,
-                boundary_page=structure.element_pages.get(boundary.element_id),
-                heading_page=structure.element_pages.get(el.id),
+                review_id=f"topic-change:{score.marker_element_id}",
+                heading_element_id=score.marker_element_id,
+                heading_index=score.marker_index,
+                heading_text=score.marker_text,
+                boundary_element_id=score.boundary_element_id,
+                boundary_index=score.boundary_index,
+                boundary_page=score.boundary_page,
+                heading_page=score.marker_page,
+                candidate_kind=score.marker_kind,
+                semantic_score=score.score,
+                lexical_discontinuity=score.lexical_discontinuity,
+                before_element_ids=score.before_element_ids,
+                after_element_ids=score.after_element_ids,
+                shared_terms=score.shared_terms,
+                before_terms=score.before_terms,
+                after_terms=score.after_terms,
+                signals=score.signals,
             )
         )
     return candidates
+
+
+def _review_role(slot: int) -> str:
+    roles = ("transition_reviewer", "continuity_reviewer", "adjudicator")
+    return roles[(slot - 1) % len(roles)]
 
 
 def build_topic_change_review_batch(
@@ -129,58 +103,83 @@ def build_topic_change_review_batch(
     config: SplitConfig,
     workers: int,
 ) -> dict[str, Any]:
-    """Return independent review tasks that a host can send to agents in parallel."""
+    """Return review tasks distributed across actual worker slots.
+
+    ``workers`` controls concurrency. ``topic_change_reviewers`` controls how
+    many independent verdicts each boundary receives.
+    """
     workers = max(1, workers)
     candidates = find_topic_change_candidates(ir, config)
+    semantic_map = build_semantic_map(ir, config)
+    outline = semantic_map["outline"]
     tasks: list[dict[str, Any]] = []
     for candidate in candidates:
-        before_start = max(0, candidate.boundary_index - 8)
-        after_end = min(len(ir.elements), candidate.heading_index + 9)
-        tasks.append(
-            {
-                "review_id": candidate.review_id,
-                "proposed_boundary_element_id": candidate.boundary_element_id,
-                "proposed_boundary_index": candidate.boundary_index,
-                "topic_marker_element_id": candidate.heading_element_id,
-                "topic_marker": candidate.heading_text,
-                "boundary_page": candidate.boundary_page,
-                "topic_marker_page": candidate.heading_page,
-                "before_context": _text_excerpt(
-                    ir.elements[before_start : candidate.boundary_index + 1]
-                ),
-                "after_context": _text_excerpt(
-                    ir.elements[candidate.heading_index : after_end]
-                ),
-                "instructions": (
-                    "Decide whether the content after the marker begins an independent "
-                    "study topic. Return decision='split' when it does; use 'merge' only "
-                    "when the marker is a true subtopic of the same session. Include a "
-                    "specific semantic reason."
-                ),
-            }
-        )
+        before_indices = [ir.index_of(element_id) for element_id in candidate.before_element_ids]
+        after_indices = [ir.index_of(element_id) for element_id in candidate.after_element_ids]
+        before_elements = [ir.elements[index] for index in before_indices]
+        after_elements = [ir.elements[index] for index in after_indices]
+        nearby_outline = sorted(
+            outline,
+            key=lambda item: abs(int(item["index"]) - candidate.boundary_index),
+        )[:6]
+        nearby_outline.sort(key=lambda item: int(item["index"]))
+        base_task = {
+            "review_id": candidate.review_id,
+            "document_summary": semantic_map["document"],
+            "nearby_document_outline": nearby_outline,
+            "proposed_boundary_element_id": candidate.boundary_element_id,
+            "proposed_boundary_index": candidate.boundary_index,
+            "topic_marker_element_id": candidate.heading_element_id,
+            "topic_marker": candidate.heading_text,
+            "candidate_kind": candidate.candidate_kind,
+            "semantic_score": candidate.semantic_score,
+            "lexical_discontinuity": candidate.lexical_discontinuity,
+            "signals": list(candidate.signals),
+            "shared_terms": list(candidate.shared_terms),
+            "before_terms": list(candidate.before_terms),
+            "after_terms": list(candidate.after_terms),
+            "before_element_ids": list(candidate.before_element_ids),
+            "after_element_ids": list(candidate.after_element_ids),
+            "boundary_page": candidate.boundary_page,
+            "topic_marker_page": candidate.heading_page,
+            "before_context": _text_excerpt(before_elements, config.semantic_context_chars),
+            "after_context": _text_excerpt(after_elements, config.semantic_context_chars),
+            "instructions": (
+                "Decide whether the learning objective after the proposed boundary "
+                "is independently studyable from the material before it. Topic change "
+                "overrides minimum chunk size. Return split for a genuine objective or "
+                "domain change; return merge for an example, continuation, application, "
+                "or subtopic of the same objective. Cite element IDs from both sides."
+            ),
+        }
+        for reviewer_slot in range(1, config.topic_change_reviewers + 1):
+            tasks.append(
+                {
+                    **base_task,
+                    "reviewer_slot": reviewer_slot,
+                    "review_role": _review_role(reviewer_slot),
+                }
+            )
 
-    batches = [[] for _ in range(workers)] if tasks else []
-    # ``workers`` controls concurrency, not vote count. Even one worker must
-    # receive every independent reviewer slot required for consensus.
-    reviewers_per_task = config.topic_change_min_votes if tasks else 0
+    batches = [[] for _ in range(min(workers, len(tasks)))] if tasks else []
     for index, task in enumerate(tasks):
-        for reviewer_slot in range(reviewers_per_task):
-            if batches:
-                batches[(index + reviewer_slot) % len(batches)].append(
-                    {**task, "reviewer_slot": reviewer_slot + 1}
-                )
+        batches[index % len(batches)].append(task)
 
     return {
-        "status": "needs_parallel_topic_review",
+        "status": "needs_parallel_topic_review" if tasks else "no_topic_candidates",
         "recommended_workers": len(batches),
-        "reviewers_per_task": reviewers_per_task,
+        "reviewers_per_task": config.topic_change_reviewers if tasks else 0,
+        "minimum_consensus_votes": config.topic_change_min_votes,
+        "total_boundaries": len(candidates),
         "total_tasks": len(tasks),
         "batches": batches,
         "response_schema": {
-            "review_id": "topic-change:<heading-element-id>",
+            "review_id": "Stable review ID from the task",
             "reviewer_id": "Stable identifier for the independent reviewing agent",
             "decision": "split | merge",
+            "confidence": "Number from 0 to 1",
             "reason": "Specific semantic justification",
+            "evidence_before": "One or more element IDs before the boundary",
+            "evidence_after": "One or more element IDs after the boundary",
         },
     }

@@ -102,13 +102,13 @@ def test_confirmed_topic_change_becomes_a_hard_boundary(tmp_path):
     config = SplitConfig(min_pages=1, max_pages=10)
     batch = build_topic_change_review_batch(ir, config, workers=2)
     task = batch["batches"][0][0]
-    assert batch["reviewers_per_task"] == 2
+    assert batch["reviewers_per_task"] == 3
     assert sum(
         1
         for worker_batch in batch["batches"]
         for candidate in worker_batch
         if candidate["review_id"] == task["review_id"]
-    ) == 2
+) == 3
 
     result = commit_topic_change_reviews(
         ir,
@@ -119,13 +119,19 @@ def test_confirmed_topic_change_becomes_a_hard_boundary(tmp_path):
                 "review_id": task["review_id"],
                 "reviewer_id": "reviewer-a",
                 "decision": "split",
+                "confidence": 0.95,
                 "reason": "The heading begins a separate subject with no shared learning objective.",
+                "evidence_before": [task["before_element_ids"][-1]],
+                "evidence_after": [task["after_element_ids"][0]],
             },
             {
                 "review_id": task["review_id"],
                 "reviewer_id": "reviewer-b",
                 "decision": "split",
+                "confidence": 0.93,
                 "reason": "The following material introduces an independent topic rather than a subtopic.",
+                "evidence_before": [task["before_element_ids"][-1]],
+                "evidence_after": [task["after_element_ids"][0]],
             },
         ],
     )

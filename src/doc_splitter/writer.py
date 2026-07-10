@@ -18,7 +18,9 @@ from doc_splitter.section_titles import infer_chunk_topic, list_section_headings
 from doc_splitter.workflow import BOUNDARY_COMPLETE, WRITING, require_stage
 from doc_splitter.structure_analyzer import (
     active_h1_for_element,
+    analyze_structure,
     compute_chunk_page_ranges,
+    page_range_for_elements,
 )
 
 _CHUNK_FILE_RE = re.compile(r"^\d{2}_.+\.(md|pdf)$")
@@ -75,6 +77,7 @@ def validate_boundary_plan(
 
     ranges: list[tuple[int, int]] = []
     expected_start = 0
+    structure = analyze_structure(ir, config)
     for position, boundary in enumerate(session.boundaries, start=1):
         start = int(boundary.get("start_index", -1))
         end = int(boundary.get("end_index", -1))
@@ -94,6 +97,36 @@ def validate_boundary_plan(
                 f"Boundary {position} end_element_id does not match IR index {end}: "
                 f"expected {expected_id}."
             )
+        start_page, end_page = page_range_for_elements(
+            ir, start, end, structure.element_pages
+        )
+        page_count = (
+            end_page - start_page + 1
+            if start_page is not None and end_page is not None
+            else None
+        )
+        if page_count is not None and page_count > config.hard_max_pages:
+            raise ValueError(
+                f"Boundary {position} creates {page_count} pages, exceeding "
+                f"hard_max_pages={config.hard_max_pages}."
+            )
+        if page_count is not None and page_count > config.soft_max_pages:
+            evidence = boundary.get("extension_evidence", [])
+            valid_steps = {
+                int(item.get("to_pages", 0))
+                for item in evidence
+                if len(item.get("evidence_element_ids", [])) >= 2
+                and len(item.get("reviewer_ids", [])) >= config.continuity_min_reviewers
+                and int(item.get("to_pages", 0)) > config.soft_max_pages
+            }
+            required_steps = set(range(config.soft_max_pages + 1, page_count + 1))
+            if not required_steps.issubset(valid_steps):
+                missing = sorted(required_steps - valid_steps)
+                raise ValueError(
+                    f"Boundary {position} exceeds soft_max_pages={config.soft_max_pages} "
+                    "without continuity evidence for every extension step. "
+                    f"Missing approvals for page limits: {missing}."
+                )
         ranges.append((start, end))
         expected_start = end + 1
 
@@ -174,8 +207,10 @@ def write_chunks(
         word_count = sum(ir.elements[j].word_count for j in range(start_idx, end_idx + 1))
         element_ids = [ir.elements[j].id for j in range(start_idx, end_idx + 1)]
         boundary_reason = ""
+        boundary_meta: dict = {}
         if i - 1 < len(session.boundaries):
-            boundary_reason = session.boundaries[i - 1].get("reason", "")
+            boundary_meta = session.boundaries[i - 1]
+            boundary_reason = boundary_meta.get("reason", "")
 
         chunk_entry: dict = {
             "id": i,
@@ -195,6 +230,10 @@ def write_chunks(
             "overlap_pages": {"prev": pr.overlap_prev, "next": pr.overlap_next},
             "word_count": word_count,
             "boundary_reason": boundary_reason,
+            "split_type": boundary_meta.get("split_type", "conceptual"),
+            "continues_to_next": bool(boundary_meta.get("continues_to_next", False)),
+            "continues_from_previous": bool(boundary_meta.get("continues_from_previous", False)),
+            "extension_evidence": boundary_meta.get("extension_evidence", []),
             "h1_chapter": active_h1_for_element(ir, start_idx),
         }
         if md_meta:
@@ -209,6 +248,12 @@ def write_chunks(
         "source_file": ir.meta.source_file,
         "source_path": str(config.source_path) if config.source_path else None,
         "output_format": config.output_format,
+        "page_policy": {
+            "target_min_pages": config.min_pages,
+            "preferred_max_pages": config.max_pages,
+            "soft_max_pages": config.soft_max_pages,
+            "hard_max_pages": config.hard_max_pages,
+        },
         "total_chunks": total_chunks,
         "chunks": manifest_chunks,
         "skipped_pages": [p.to_dict() for p in ir.meta.skipped_pages],

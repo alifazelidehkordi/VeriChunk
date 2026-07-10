@@ -13,10 +13,11 @@ from doc_splitter.config import SplitConfig, config_from_dict, config_to_dict
 from doc_splitter.format_detector import InputFormat, detect_format
 from doc_splitter.index_generator import get_index_context
 from doc_splitter.ir.models import DocumentIR
-from doc_splitter.ir.serialize import save_ir
+from doc_splitter.ir.serialize import save_ir, save_json
 from doc_splitter.parsers import parse_docx, parse_pdf
 from doc_splitter.verifier import verify_output
 from doc_splitter.writer import validate_boundary_plan, write_chunks
+from doc_splitter.semantic import build_semantic_map
 from doc_splitter.topic_reviews import find_topic_change_candidates
 from doc_splitter.workflow import (
     BOUNDARY,
@@ -58,9 +59,11 @@ def init_session(
     config: SplitConfig,
     ir: DocumentIR,
 ) -> SplitSession:
+    semantic_map = build_semantic_map(ir, config)
+    save_json(semantic_map, config.output_dir / "semantic-map.json")
     initial_stage = (
         TOPIC_REVIEW
-        if find_topic_change_candidates(ir, config)
+        if semantic_map["change_candidates"]
         else BOUNDARY
     )
     session = SplitSession(

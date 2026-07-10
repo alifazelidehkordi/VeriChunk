@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from pathlib import Path
 
+from doc_splitter.agents import CommandAgentBackend, HeuristicAgentBackend, run_review_batch
 from doc_splitter.boundary.planner import (
     commit_boundary,
     commit_topic_change_reviews,
@@ -38,6 +40,7 @@ _SESSION_RESTORE_COMMANDS = frozenset(
         "commit-boundary",
         "topic-review-context",
         "commit-topic-reviews",
+        "run-topic-reviews",
         "write",
         "verify",
         "index",
@@ -178,6 +181,8 @@ def cmd_commit_boundary(args: argparse.Namespace) -> int:
         reason=args.reason,
         allow_oversize=args.allow_oversize,
         allow_topic_merge=args.allow_topic_merge,
+        continuity_evidence=args.continuity_evidence,
+        continuity_reviewers=args.continuity_reviewer,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -209,6 +214,47 @@ def cmd_commit_topic_reviews(args: argparse.Namespace) -> int:
         reviews,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_run_topic_reviews(args: argparse.Namespace) -> int:
+    config = _resolve_config(args)
+    session = load_session(config.output_dir)
+    require_stage(session, TOPIC_REVIEW, "run topic-change reviews")
+    ir = load_ir(config.output_dir / "ir.json")
+    batch = build_topic_change_review_batch(ir, config, args.workers)
+    if batch["total_tasks"] == 0:
+        print(json.dumps({"status": "no_topic_candidates"}, indent=2))
+        return 0
+    if args.backend == "command":
+        if not args.agent_command:
+            raise ValueError("--agent-command is required for --backend command")
+        backend = CommandAgentBackend(
+            args.agent_command, timeout_seconds=args.timeout_seconds
+        )
+    else:
+        backend = HeuristicAgentBackend()
+    reviews = asyncio.run(
+        run_review_batch(
+            batch, backend, workers=args.workers, retries=args.retries
+        )
+    )
+    result = commit_topic_change_reviews(ir, session, config, reviews)
+    print(
+        json.dumps(
+            {
+                "execution": {
+                    "backend": args.backend,
+                    "workers": args.workers,
+                    "reviews_completed": len(reviews),
+                },
+                "result": result,
+                "reviews": reviews,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -343,6 +389,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    p_cb.add_argument(
+        "--continuity-evidence",
+        action="append",
+        default=None,
+        help="Element ID proving the same topic continues; repeat at least twice beyond page 13.",
+    )
+    p_cb.add_argument(
+        "--continuity-reviewer",
+        action="append",
+        default=None,
+        help="Independent reviewer ID confirming continuity; repeat at least twice beyond page 13.",
+    )
     _add_config_args(p_cb)
     p_cb.set_defaults(func=cmd_commit_boundary)
 
@@ -361,6 +419,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_ctr.add_argument("--reviews", required=True)
     _add_config_args(p_ctr)
     p_ctr.set_defaults(func=cmd_commit_topic_reviews)
+
+    p_rtr = sub.add_parser(
+        "run-topic-reviews",
+        help="Execute semantic review tasks concurrently and commit their votes",
+    )
+    p_rtr.add_argument("--workers", type=int, default=4)
+    p_rtr.add_argument("--backend", choices=["heuristic", "command"], default="command")
+    p_rtr.add_argument("--agent-command", default=None)
+    p_rtr.add_argument("--timeout-seconds", type=float, default=120.0)
+    p_rtr.add_argument("--retries", type=int, default=1)
+    _add_config_args(p_rtr)
+    p_rtr.set_defaults(func=cmd_run_topic_reviews)
 
     p_write = sub.add_parser("write", help="Write chunks and verify")
     _add_config_args(p_write)

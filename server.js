@@ -13,6 +13,7 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const VENV_PYTHON = path.join(ROOT, ".venv", "bin", "python3");
 const PYTHON = process.env.DOC_SPLITTER_PYTHON || (existsSync(VENV_PYTHON) ? VENV_PYTHON : "python3");
 const DEBUG = process.env.DOC_SPLITTER_MCP_DEBUG === "1";
+const AGENT_COMMAND = process.env.DOC_SPLITTER_AGENT_COMMAND || "";
 
 function debug(message) {
   if (DEBUG) process.stderr.write(`[doc-splitter] ${message}\n`);
@@ -48,7 +49,7 @@ function parseJsonOutput(output) {
   return JSON.parse(output.slice(idx));
 }
 
-const server = new McpServer({ name: "doc-splitter", version: "0.1.0" });
+const server = new McpServer({ name: "doc-splitter", version: "0.2.0" });
 server.server.onerror = (error) => debug(`server error: ${error?.stack || error}`);
 server.server.onclose = () => debug("server closed");
 
@@ -113,14 +114,18 @@ server.registerTool(
       element_id: z.string().optional(),
       reason: z.string().optional(),
       allow_oversize: z.boolean().optional(),
+      continuity_evidence: z.array(z.string()).optional(),
+      continuity_reviewers: z.array(z.string()).optional(),
       allow_topic_merge: z.boolean().optional().describe("Deprecated; confirmed topic changes cannot be overridden."),
     },
     annotations: { readOnlyHint: false, openWorldHint: false },
   },
-  async ({ output_dir, action, element_id, reason, allow_oversize, allow_topic_merge }) => {
+  async ({ output_dir, action, element_id, reason, allow_oversize, continuity_evidence, continuity_reviewers, allow_topic_merge }) => {
     const args = ["commit-boundary", "--action", action, "--reason", reason || ""];
     if (element_id) args.push("--element-id", element_id);
     if (allow_oversize) args.push("--allow-oversize");
+    for (const elementId of continuity_evidence || []) args.push("--continuity-evidence", elementId);
+    for (const reviewerId of continuity_reviewers || []) args.push("--continuity-reviewer", reviewerId);
     if (allow_topic_merge) args.push("--allow-topic-merge");
     if (output_dir) args.push("--out", output_dir);
     const out = await runCli(args);
@@ -132,7 +137,7 @@ server.registerTool(
   "get_topic_change_review_batch",
   {
     title: "Get parallel topic-change review tasks",
-    description: "Return independent topic-transition tasks for concurrent subagents. Collect all votes, then submit them together.",
+    description: "Return three-role semantic transition tasks, including heading-free candidates, for concurrent subagents. Collect evidence-backed votes and submit them together.",
     inputSchema: {
       output_dir: outDir,
       workers: z.number().int().min(1).max(16).optional(),
@@ -149,17 +154,53 @@ server.registerTool(
 );
 
 server.registerTool(
+  "run_parallel_topic_reviews",
+  {
+    title: "Run parallel topic-change reviewers",
+    description: "Execute the operator-configured JSON reviewer command concurrently. Requires DOC_SPLITTER_AGENT_COMMAND in the MCP server environment.",
+    inputSchema: {
+      output_dir: outDir,
+      workers: z.number().int().min(1).max(16).optional(),
+      timeout_seconds: z.number().positive().max(600).optional(),
+      retries: z.number().int().min(0).max(5).optional(),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: true },
+  },
+  async ({ output_dir, workers, timeout_seconds, retries }) => {
+    if (!AGENT_COMMAND) {
+      throw new Error("DOC_SPLITTER_AGENT_COMMAND is not configured for this MCP server");
+    }
+    const args = [
+      "run-topic-reviews",
+      "--backend",
+      "command",
+      "--agent-command",
+      AGENT_COMMAND,
+    ];
+    if (output_dir) args.push("--out", output_dir);
+    if (workers) args.push("--workers", String(workers));
+    if (timeout_seconds) args.push("--timeout-seconds", String(timeout_seconds));
+    if (retries !== undefined) args.push("--retries", String(retries));
+    const out = await runCli(args);
+    return { content: [{ type: "text", text: out }] };
+  },
+);
+
+server.registerTool(
   "commit_topic_change_reviews",
   {
     title: "Commit parallel topic-change review votes",
-    description: "Persist collected independent votes. Two matching votes turn a confirmed topic change into a hard boundary.",
+    description: "Persist evidence-backed independent votes. Two split votes create a hard boundary; unresolved disagreement blocks planning.",
     inputSchema: {
       output_dir: outDir,
       reviews: z.array(z.object({
         review_id: z.string(),
         reviewer_id: z.string(),
         decision: z.enum(["split", "merge"]),
+        confidence: z.number().min(0).max(1),
         reason: z.string(),
+        evidence_before: z.array(z.string()).min(1),
+        evidence_after: z.array(z.string()).min(1),
       })).min(1),
     },
     annotations: { readOnlyHint: false, openWorldHint: false },

@@ -81,9 +81,9 @@ def test_single_worker_still_receives_all_required_reviewer_slots():
     )
 
     assert batch["recommended_workers"] == 1
-    assert batch["reviewers_per_task"] == 2
-    assert len(batch["batches"][0]) == 2
-    assert {task["reviewer_slot"] for task in batch["batches"][0]} == {1, 2}
+    assert batch["reviewers_per_task"] == 3
+    assert len(batch["batches"][0]) == 3
+    assert {task["reviewer_slot"] for task in batch["batches"][0]} == {1, 2, 3}
 
 
 def test_writer_rejects_incomplete_boundary_plan_without_creating_manifest(tmp_path: Path):

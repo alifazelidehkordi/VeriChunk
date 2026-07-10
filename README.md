@@ -40,11 +40,11 @@ Long study documents overwhelm AI assistants: they exceed context windows, trigg
 - Each chunk can be analyzed into bilingual Persian/English study metadata.
 - Final study indexes link to every session and include a practical **Study Focus** column.
 
-`ducsplit` does not bundle its own LLM. The host agent supplies judgment; `ducsplit` supplies parsing, constraints, persistence, writing, and verification.
+`ducsplit` does not bundle a provider-specific LLM SDK. Reviews can be supplied by the MCP host, or executed concurrently through the command-backend bridge; the core package supplies semantic candidate detection, constraints, persistence, writing, and verification.
 
 ## Key Features
 
-- **Conceptual splitting** — targets 5–10 page study sessions, but lets concept completeness override page count.
+- **Semantic-first splitting** — prefers 5–12 page study sessions, allows page 13 for concept completion, and enforces an absolute 20-page cap.
 - **Safe-cut constraints** — the LLM can only choose from deterministic candidates, preventing mid-paragraph, mid-list, and mid-table cuts.
 - **Dual PDF parsing** — `pymupdf4llm` for Markdown-like extraction plus OpenDataLoader for layout reconciliation when Java is available.
 - **DOCX support** — headings, paragraphs, lists, tables, and embedded images via `python-docx`.
@@ -72,12 +72,13 @@ flowchart TD
     G --> E
 
     E --> H[Structure Analyzer]
-    H --> I[Safe Boundary Candidate Generator]
-    I --> J{Host AI Agent}
-    J -->|cut| K[Boundary Session]
-    J -->|extend| I
+    H --> I[Semantic Change-Point Scorer]
+    I --> J[Three-Role Parallel Review]
+    J --> K{Boundary Agent}
+    K -->|cut| L0[Boundary Session]
+    K -->|one-page extend| I
 
-    K --> L[Writer]
+    L0 --> L[Writer]
     L -->|markdown| M[.md Chunks]
     L -->|pdf| N[.pdf Chunks]
     L --> O[manifest.json]
@@ -140,19 +141,33 @@ doc-splitter run \
   --input ./book.pdf \
   --out ./output/book \
   --min-pages 5 \
-  --max-pages 10
+  --max-pages 12
 ```
 
 This parses the document, writes `ir.json`, creates `.split-session.json`, and prints the first required workflow context. Documents with topic-change candidates start in `topic_review`; documents without candidates start directly in `boundary`.
 
-When the run starts in `topic_review`, create independent topic-change tasks and give the returned batches to separate host agents concurrently. Collect their votes and submit them together; two matching votes resolve each candidate. Boundary planning remains locked until every required candidate is resolved, and a confirmed `split` becomes a non-overridable hard boundary.
+When the run starts in `topic_review`, the semantic detector has found one or more possible changes of learning objective, including changes with no heading. Each boundary is reviewed in three independent roles: transition reviewer, continuity reviewer, and adjudicator. Every vote must cite element IDs on both sides. Two matching `split` votes create a non-overridable hard boundary; unresolved disagreement keeps planning locked.
+
+To let an MCP host distribute the work to its own subagents:
 
 ```bash
 doc-splitter topic-review-context --out ./output/book --workers 4
 doc-splitter commit-topic-reviews \
   --out ./output/book \
-  --reviews '[{"review_id":"topic-change:el-042","reviewer_id":"agent-a","decision":"split","reason":"A new independent topic begins after this completed discussion."},{"review_id":"topic-change:el-042","reviewer_id":"agent-b","decision":"split","reason":"The following material has a separate learning objective and should start a new session."}]'
+  --reviews '[{"review_id":"topic-change:el-042","reviewer_id":"agent-a","decision":"split","confidence":0.94,"reason":"The learning objective changes after the completed mechanism.","evidence_before":["el-041"],"evidence_after":["el-042"]},{"review_id":"topic-change:el-042","reviewer_id":"agent-b","decision":"split","confidence":0.91,"reason":"The next material introduces a separate domain and study goal.","evidence_before":["el-041"],"evidence_after":["el-042"]}]'
 ```
+
+To run reviewer processes concurrently from the CLI, point the command backend at a bridge that reads one task as JSON on stdin and writes one review JSON object on stdout:
+
+```bash
+doc-splitter run-topic-reviews \
+  --out ./output/book \
+  --workers 6 \
+  --backend command \
+  --agent-command './scripts/my-llm-reviewer'
+```
+
+`--backend heuristic` exists only for deterministic offline testing and baseline runs; it is not a substitute for independent model review.
 
 Repeat the boundary loop until the context reports `status: "complete"`:
 
@@ -180,15 +195,31 @@ doc-splitter commit-boundary \
   --reason "The current explanation ends here; the next section starts a different topic."
 ```
 
-If the concept continues beyond the current window:
+If the concept continues from page 12 to page 13:
 
 ```bash
 doc-splitter commit-boundary \
   --out ./output/book \
   --action extend \
   --allow-oversize \
-  --reason "The same mechanism continues into the next example."
+  --reason "The same mechanism continues into its concluding example on page 13."
 ```
+
+Every one-page extension beyond page 13 also requires two independent continuity reviewers and at least two evidence element IDs:
+
+```bash
+doc-splitter commit-boundary \
+  --out ./output/book \
+  --action extend \
+  --allow-oversize \
+  --reason "Both reviewers confirm that the same derivation continues." \
+  --continuity-evidence el-118 \
+  --continuity-evidence el-121 \
+  --continuity-reviewer reviewer-a \
+  --continuity-reviewer reviewer-b
+```
+
+No extension can pass a confirmed topic change. At the absolute 20-page cap, the best safe boundary is recorded as `forced_size_split` with continuation metadata.
 
 After the final boundary changes the stage to `boundary_complete`, write and verify chunks:
 
@@ -265,7 +296,8 @@ For project-level MCP configuration, use `.mcp.json`:
       "command": "node",
       "args": ["/absolute/path/to/ducsplit/server.js"],
       "env": {
-        "DOC_SPLITTER_PYTHON": "/absolute/path/to/ducsplit/.venv/bin/python3"
+        "DOC_SPLITTER_PYTHON": "/absolute/path/to/ducsplit/.venv/bin/python3",
+        "DOC_SPLITTER_AGENT_COMMAND": "/absolute/path/to/your-json-reviewer"
       }
     }
   }
@@ -274,9 +306,9 @@ For project-level MCP configuration, use `.mcp.json`:
 
 Then ask your agent:
 
-> Use the `doc-splitter` MCP tools to split `book.pdf` into 5–10 page conceptual Markdown chunks under `output/book`. Choose only safe boundary candidates, write the chunks, verify integrity, analyze every chunk in Persian and English, then author and commit the study indexes.
+> Use the `doc-splitter` MCP tools to split `book.pdf` into semantic Markdown chunks, preferring 5–12 pages, allowing page 13 only for concept completion, and never exceeding 20 pages under `output/book`. Choose only safe boundary candidates, write the chunks, verify integrity, analyze every chunk in Persian and English, then author and commit the study indexes.
 
-The host AI agent must drive the MCP workflow. `ducsplit` does not call an LLM API by itself; the connected AI CLI reads each boundary or analysis context and decides what to commit.
+The MCP workflow remains host-driven. The optional CLI command backend can invoke an external reviewer process, but the core package does not hard-code or directly configure any LLM provider API.
 
 ## CLI Reference
 
@@ -289,7 +321,8 @@ The host AI agent must drive the MCP workflow. `ducsplit` does not call an LLM A
 | `doc-splitter boundary-context` | Print the current content window, instructions, and safe cut candidates. |
 | `doc-splitter commit-boundary` | Commit a `cut` or `extend` decision. |
 | `doc-splitter topic-review-context` | Build independent topic-change tasks for parallel host-agent review. |
-| `doc-splitter commit-topic-reviews` | Record collected topic-change review votes. |
+| `doc-splitter commit-topic-reviews` | Record evidence-backed topic-change review votes. |
+| `doc-splitter run-topic-reviews` | Execute review tasks concurrently through a heuristic test backend or external command bridge. |
 | `doc-splitter write` | Write chunks and run verification. |
 | `doc-splitter verify` | Re-run verification against existing chunks and manifest. |
 | `doc-splitter get-chunk` | Read one chunk's content by numeric ID. |
@@ -306,7 +339,7 @@ Available on `run`, `parse`, `boundary-context`, `commit-boundary`, `write`, `ve
 |---|---:|---|
 | `--out PATH` | `output` | Output/session directory. |
 | `--min-pages N` | `5` | Target minimum chunk size (converted to words via `words_per_page`). |
-| `--max-pages N` | `10` | Maximum chunk size; larger windows require explicit `--allow-oversize`. |
+| `--max-pages N` | `12` | Preferred maximum. Page 13 is the soft allowance; later pages need continuity evidence. |
 | `--reading-speed-wpm N` | `80` | Study reading-speed estimate (wpm) for index time calculations. Use 80–100 for technical/medical content, 150–200 for general reading. |
 | `--output-format markdown\|pdf\|both` | `markdown` | Chunk output format. PDF output requires PDF input. |
 | `--overlap-pages N` | `1` | Extra neighboring pages around PDF boundary pages. |
@@ -329,7 +362,7 @@ Writes `ir.json` without starting a boundary workflow.
 
 ### `boundary-context`
 
-Returns JSON with `status`, `chunk_number`, `content_window`, `safe_candidates`, `instructions`, `min_pages`, and `max_pages`. The host agent must choose only from `safe_candidates`.
+Returns JSON with `status`, `chunk_number`, `content_window`, `safe_candidates`, `instructions`, the complete `page_policy`, extension requirements, and any required topic boundary. The host agent must choose only from `safe_candidates`.
 
 ### `commit-boundary`
 
@@ -338,7 +371,9 @@ Returns JSON with `status`, `chunk_number`, `content_window`, `safe_candidates`,
 | `--action cut\|extend` | yes | `cut` commits a boundary; `extend` expands the decision window. |
 | `--element-id ID` | for `cut` | Safe candidate element ID. |
 | `--reason TEXT` | no | Human-readable rationale stored for auditability. |
-| `--allow-oversize` | for `extend` | Explicitly allow a concept to exceed `--max-pages`. |
+| `--allow-oversize` | for `extend` | Explicitly request a one-page extension. |
+| `--continuity-evidence ID` | beyond page 13 | Repeat at least twice with element IDs proving semantic continuity. |
+| `--continuity-reviewer ID` | beyond page 13 | Repeat for at least two independent reviewers. |
 | `--allow-topic-merge` | deprecated | Accepted for backward compatibility, but confirmed topic changes are never overridable. |
 
 ### `write` / `verify`
@@ -372,9 +407,10 @@ Stores `study-index-fa.md`, `study-index-en.md`, and `study-map.md` authored by 
 |---|---|---:|---|
 | `split_document` | `file_path`, optional `min_pages`, `max_pages`, `output_dir`, `output_format`, `overlap_pages` | yes | Parses a PDF/DOCX and starts the boundary session. |
 | `get_boundary_context` | optional `output_dir` | no | Returns the current content window and safe cut candidates. |
-| `commit_boundary` | `action`, optional `element_id`, `reason`, `allow_oversize`, `output_dir` | yes | Commits a boundary cut or explicitly extends beyond the target. |
-| `get_topic_change_review_batch` | optional `output_dir`, `workers` | no | Returns duplicated topic-change tasks for independent parallel review. |
-| `commit_topic_change_reviews` | `reviews`, optional `output_dir` | yes | Stores review votes; two matching `split` votes create a hard boundary. |
+| `commit_boundary` | `action`, optional `element_id`, `reason`, `allow_oversize`, `continuity_evidence`, `continuity_reviewers`, `output_dir` | yes | Commits a cut or one-page evidence-gated extension. |
+| `get_topic_change_review_batch` | optional `output_dir`, `workers` | no | Returns three-role semantic review tasks, including heading-free change points. |
+| `run_parallel_topic_reviews` | optional `output_dir`, `workers`, `timeout_seconds`, `retries` | yes | Runs the operator-configured `DOC_SPLITTER_AGENT_COMMAND` concurrently and commits its votes. |
+| `commit_topic_change_reviews` | evidence-backed `reviews`, optional `output_dir` | yes | Stores votes; two `split` votes create a hard boundary and unresolved disagreement blocks planning. |
 | `write_chunks` | `output_format`, optional `output_dir`, `overlap_pages` | yes | Requires an explicit Markdown, PDF, or both choice, then writes chunks and runs verification. |
 | `get_chunk` | `chunk_id`, optional `output_dir` | no | Reads generated chunk content. |
 | `verify_integrity` | optional `output_dir` | no | Re-runs verification. |
@@ -383,7 +419,7 @@ Stores `study-index-fa.md`, `study-index-en.md`, and `study-map.md` authored by 
 | `get_study_index_context` | optional `output_dir`, `reading_speed_wpm` | no | Returns context for agent-authored Persian and English study indexes. |
 | `commit_study_index` | `index_fa`, `index_en`, `study_map`, optional `output_dir` | yes | Stores final bilingual indexes and a generic document-level study map. |
 
-The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`.
+The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`. Set `DOC_SPLITTER_AGENT_COMMAND` to enable the server-side parallel reviewer tool without exposing an arbitrary command in tool inputs.
 
 ## Workflow state safety
 
@@ -405,9 +441,10 @@ Session files are revisioned and written atomically under an advisory lock. A st
 | Setting | CLI Option | Default | Notes |
 |---|---|---:|---|
 | Output directory | `--out` | `output` | Session state, IR, chunks, reports, indexes. |
-| Minimum pages | `--min-pages` | `5` | Filters early safe candidates. |
-| Maximum pages | `--max-pages` | `10` | Enforced unless an extension explicitly sets `allow_oversize`. |
-| Hard maximum pages | internal | `13` | Never exceeded, including an explicit extension. |
+| Minimum pages | `--min-pages` | `5` | Soft target only; a confirmed topic change may cut earlier. |
+| Preferred maximum pages | `--max-pages` | `12` | Normal target; topic change still overrides the minimum. |
+| Soft maximum pages | internal | `13` | Page 13 may complete the same concept with a specific reason. |
+| Absolute maximum pages | internal | `20` | Cannot be configured higher; produces a forced continuation split. |
 | Output format | `--output-format` | `markdown` | `markdown`, `pdf`, or `both`. |
 | Boundary overlap | `--overlap-pages` | `1` | PDF outputs only. |
 | Reading speed | `--reading-speed-wpm` | `80` | Index time estimates; 80 wpm for technical/medical study, 150+ for general content. |
@@ -418,8 +455,11 @@ Defined in `src/doc_splitter/config.py`. Not all have CLI flags yet.
 
 | Setting | Default | Purpose |
 |---|---:|---|
-| `boundary_window_pages` | `10` | Initial content window shown to the host agent. |
-| `boundary_window_extension_pages` | `10` | Pages added when the host chooses `extend`. |
+| `boundary_window_pages` | `12` | Initial preferred content window. |
+| `boundary_window_extension_pages` | `1` | Extensions are deliberately incremental. |
+| `topic_change_reviewers` | `3` | Transition, continuity, and adjudicator roles per candidate. |
+| `semantic_context_elements` | `4` | Meaningful elements sampled on each side of a transition. |
+| `continuity_min_reviewers` | `2` | Required independent confirmations beyond page 13. |
 | `words_per_page` | `400` | Converts page targets into word-count windows. |
 | `image_extraction` | `true` | Extracts and preserves image references. |
 | `ocr_enabled` | `false` | Scanned pages may be skipped. |
@@ -439,6 +479,7 @@ output/book/
 ├── 02-insulin-signaling-and-feedback.md
 ├── images/
 ├── ir.json
+├── semantic-map.json
 ├── manifest.json
 ├── verification-report.json
 ├── semantic-review-report.json
@@ -501,7 +542,9 @@ Example context returned to the host agent:
     }
   ],
   "min_pages": 5,
-  "max_pages": 10
+  "max_pages": 12,
+  "soft_max_pages": 13,
+  "hard_max_pages": 20
 }
 ```
 
@@ -553,8 +596,8 @@ For PDF output, conceptual chunks are decided by element boundaries, but written
 - **Password-protected PDFs** — not supported.
 - **DOCX page numbers** — estimated from word count; DOCX has no stable rendered page numbers.
 - **Non-Latin filenames** — semantic slugs are ASCII-folded; fallback is `section-N`.
-- **Very short documents** — may produce fewer or smaller chunks than the 5–10 page target.
-- **Very long concepts** — the host agent must explicitly set `allow_oversize` when extending beyond the configured maximum, and no chunk can exceed 13 pages.
+- **Very short documents** — may produce fewer or smaller chunks than the 5–12 page target.
+- **Very long concepts** — page 13 is a soft allowance; every later page needs two continuity reviewers plus evidence. The absolute cap is 20 pages, after which the chunk is marked as a forced continuation.
 - **Tables and lists** — treated atomically; the tool avoids cutting through them.
 - **OpenDataLoader failures** — parsing continues with `pymupdf4llm`; recorded in reconciliation notes.
 - **PDF boundary precision** — PDF chunks are page-level extracts, not element-level visual crops.
@@ -593,6 +636,8 @@ ducsplit/
 │   ├── format_detector.py            # PDF/DOCX detection
 │   ├── ir/                           # Intermediate representation
 │   ├── parsers/                      # PDF/DOCX parsers and reconciliation
+│   ├── semantic.py                   # Heading-free semantic change-point scoring
+│   ├── agents/                       # Concurrent reviewer backends and scheduler
 │   ├── boundary/                     # Safe candidates and boundary session
 │   ├── writers/                      # Markdown and PDF writers
 │   ├── content/                      # Chunk analysis workflow
@@ -638,8 +683,8 @@ Recommended workflow:
 - **LLM judgment is constrained** — the agent decides among safe options; it does not rewrite parser state freely.
 - **Agent laziness is rejected** — auto-generated reasons (`auto-cut`, `auto from section_headings`), template study-focus, and index commits without reading chunk files are caught by validators and refused.
 - **Verification is mandatory** — generated chunks are auditable and checked for loss or duplication.
-- **Concepts beat page counts** — 5–10 pages is a target, not a hard rule.
-- **No bundled LLM** — `ducsplit` does not call an external LLM API; the host agent does.
+- **Topic changes beat page counts** — 5–12 pages is the preferred range, page 13 is soft, and 20 pages is absolute.
+- **Provider-neutral review execution** — the MCP host can supply subagents, or the CLI can run an external JSON-in/JSON-out reviewer command concurrently; no provider SDK is hard-wired into the core.
 - **PDF fidelity and semantic precision differ** — Markdown is best for semantic processing; PDF output is best for visual study continuity.
 
 ## License

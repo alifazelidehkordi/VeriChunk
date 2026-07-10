@@ -4,7 +4,8 @@
       "command": "node",
       "args": ["/absolute/path/to/ducsplit/server.js"],
       "env": {
-        "DOC_SPLITTER_PYTHON": "/absolute/path/to/ducsplit/.venv/bin/python3"
+        "DOC_SPLITTER_PYTHON": "/absolute/path/to/ducsplit/.venv/bin/python3",
+        "DOC_SPLITTER_AGENT_COMMAND": "/absolute/path/to/your-json-reviewer"
       }
     }
   }
