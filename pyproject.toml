@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "doc-splitter"
 version = "0.5.0"
-description = "Conceptual document splitter with MCP and CLI interfaces"
+description = "VeriChunk: verified semantic document chunking with CLI and MCP interfaces"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-keywords = ["documents", "pdf", "docx", "mcp", "semantic-splitting"]
+keywords = ["documents", "pdf", "docx", "mcp", "semantic-splitting", "verification", "ai-agents"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "License :: OSI Approved :: MIT License",
@@ -44,11 +44,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/alifazelidehkordi/ducsplit"
-Repository = "https://github.com/alifazelidehkordi/ducsplit"
-Issues = "https://github.com/alifazelidehkordi/ducsplit/issues"
+Homepage = "https://github.com/alifazelidehkordi/verichunk"
+Repository = "https://github.com/alifazelidehkordi/verichunk"
+Issues = "https://github.com/alifazelidehkordi/verichunk/issues"
 
 [project.scripts]
+verichunk = "doc_splitter.cli:main"
 doc-splitter = "doc_splitter.cli:main"
 
 [tool.hatch.build.targets.wheel]
