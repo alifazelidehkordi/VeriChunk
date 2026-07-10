@@ -597,6 +597,16 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
+Run the frozen phase-zero golden audit:
+
+```bash
+PYTHONPATH=src python3 scripts/audit-golden-corpus.py \
+  --output docs/baseline/golden-results.json
+```
+
+The corpus and current known gaps are documented in
+[`docs/baseline/phase-0.md`](docs/baseline/phase-0.md).
+
 Run the MCP server directly (waits for stdio MCP protocol messages):
 
 ```bash

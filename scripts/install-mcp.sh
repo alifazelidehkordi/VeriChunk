@@ -21,4 +21,5 @@ register codex codex mcp add doc-splitter -- env DOC_SPLITTER_PYTHON="$PYTHON" n
 register grok grok mcp add doc-splitter -s user -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
 register opencode opencode mcp add doc-splitter -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
 
-echo "Done. Project .mcp.json is at $REPO/.mcp.json"
+echo "Done. Available MCP clients were configured with repository-local paths."
+echo "For manual setup, copy $REPO/.mcp.json.example to .mcp.json and replace the placeholders."

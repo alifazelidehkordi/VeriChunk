@@ -1,0 +1,174 @@
+{
+  "elements": [
+    {
+      "id": "el-001",
+      "type": "heading",
+      "level": 1,
+      "text": "IMMUNE RESPONSE",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 2,
+      "cumulative_word_count": 2
+    },
+    {
+      "id": "el-002",
+      "type": "paragraph",
+      "text": "Page 1: the same immune-response explanation continues with connected evidence.",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 12
+    },
+    {
+      "id": "el-003",
+      "type": "paragraph",
+      "text": "Page 2: the same immune-response explanation continues with connected evidence.",
+      "page_number": 2,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 22
+    },
+    {
+      "id": "el-004",
+      "type": "paragraph",
+      "text": "Page 3: the same immune-response explanation continues with connected evidence.",
+      "page_number": 3,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 32
+    },
+    {
+      "id": "el-005",
+      "type": "paragraph",
+      "text": "Page 4: the same immune-response explanation continues with connected evidence.",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 42
+    },
+    {
+      "id": "el-006",
+      "type": "paragraph",
+      "text": "Page 5: the same immune-response explanation continues with connected evidence.",
+      "page_number": 5,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 52
+    },
+    {
+      "id": "el-007",
+      "type": "paragraph",
+      "text": "Page 6: the same immune-response explanation continues with connected evidence.",
+      "page_number": 6,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 62
+    },
+    {
+      "id": "el-008",
+      "type": "paragraph",
+      "text": "Page 7: the same immune-response explanation continues with connected evidence.",
+      "page_number": 7,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 72
+    },
+    {
+      "id": "el-009",
+      "type": "paragraph",
+      "text": "Page 8: the same immune-response explanation continues with connected evidence.",
+      "page_number": 8,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 82
+    },
+    {
+      "id": "el-010",
+      "type": "paragraph",
+      "text": "Page 9: the same immune-response explanation continues with connected evidence.",
+      "page_number": 9,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 92
+    },
+    {
+      "id": "el-011",
+      "type": "paragraph",
+      "text": "Page 10: the same immune-response explanation continues with connected evidence.",
+      "page_number": 10,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 102
+    },
+    {
+      "id": "el-012",
+      "type": "paragraph",
+      "text": "Page 11: the same immune-response explanation continues with connected evidence.",
+      "page_number": 11,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 112
+    },
+    {
+      "id": "el-013",
+      "type": "paragraph",
+      "text": "Page 12: the same immune-response explanation continues with connected evidence.",
+      "page_number": 12,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 122
+    },
+    {
+      "id": "el-014",
+      "type": "paragraph",
+      "text": "Page 13: the same immune-response explanation continues with connected evidence.",
+      "page_number": 13,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 132
+    },
+    {
+      "id": "el-015",
+      "type": "paragraph",
+      "text": "Page 14: the same immune-response explanation continues with connected evidence.",
+      "page_number": 14,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 142
+    },
+    {
+      "id": "el-016",
+      "type": "paragraph",
+      "text": "Page 15: the same immune-response explanation continues with connected evidence.",
+      "page_number": 15,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 152
+    },
+    {
+      "id": "el-017",
+      "type": "paragraph",
+      "text": "Page 16: the same immune-response explanation continues with connected evidence.",
+      "page_number": 16,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 162
+    },
+    {
+      "id": "el-018",
+      "type": "paragraph",
+      "text": "Page 17: the same immune-response explanation continues with connected evidence.",
+      "page_number": 17,
+      "bbox": null,
+      "word_count": 10,
+      "cumulative_word_count": 172
+    }
+  ],
+  "meta": {
+    "source_file": "continuous_topic_17_pages.pdf",
+    "total_word_count": 172,
+    "estimated_total_pages": 17,
+    "skipped_pages": [],
+    "reconciliation_notes": []
+  }
+}
