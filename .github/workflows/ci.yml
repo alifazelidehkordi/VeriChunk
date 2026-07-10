@@ -53,9 +53,10 @@ jobs:
         run: uv build
       - name: Smoke install built wheel
         run: |
-          uv venv /tmp/ducsplit-wheel --python 3.13
-          uv pip install --python /tmp/ducsplit-wheel/bin/python dist/*.whl
-          /tmp/ducsplit-wheel/bin/doc-splitter --help >/dev/null
+          uv venv /tmp/verichunk-wheel --python 3.13
+          uv pip install --python /tmp/verichunk-wheel/bin/python dist/*.whl
+          /tmp/verichunk-wheel/bin/verichunk --help >/dev/null
+          /tmp/verichunk-wheel/bin/doc-splitter --help >/dev/null
 
   node-tests:
     name: Node MCP
