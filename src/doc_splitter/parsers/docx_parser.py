@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import mimetypes
 import re
 from pathlib import Path
 
@@ -19,6 +21,9 @@ HEADING_STYLES = {
     "heading 3": 3,
     "Title": 1,
 }
+_BULLET_PREFIX_RE = re.compile(r"^[\-\*\u2022\u2023\u25E6\u2043\u2219]\s*")
+_DRAWING_BLIP_TAG = "{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
+_EMBED_ATTR = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
 
 
 def _heading_level(style_name: str | None) -> int | None:
@@ -37,7 +42,6 @@ def _table_rows(table) -> list[list[str]]:
 
 
 def _iter_block_items(document):
-    from docx.document import Document as DocxDocument
     from docx.oxml.table import CT_Tbl
     from docx.oxml.text.paragraph import CT_P
     from docx.table import Table
@@ -49,6 +53,45 @@ def _iter_block_items(document):
             yield Paragraph(child, document)
         elif isinstance(child, CT_Tbl):
             yield Table(child, document)
+
+
+def _is_list_paragraph(paragraph) -> bool:
+    style_name = paragraph.style.name if paragraph.style else ""
+    if style_name and style_name.casefold().startswith("list"):
+        return True
+    paragraph_properties = paragraph._p.pPr
+    if paragraph_properties is not None and paragraph_properties.numPr is not None:
+        return True
+    return bool(_BULLET_PREFIX_RE.match(paragraph.text.strip()))
+
+
+def _clean_list_item(text: str) -> str:
+    return _BULLET_PREFIX_RE.sub("", text.strip()).strip()
+
+
+def _image_suffix(part) -> str:
+    part_name = str(getattr(part, "partname", ""))
+    suffix = Path(part_name).suffix.lower()
+    if suffix:
+        return suffix
+    content_type = str(getattr(part, "content_type", ""))
+    guessed = mimetypes.guess_extension(content_type) if content_type else None
+    return guessed or ".bin"
+
+
+def _paragraph_image_parts(paragraph, document) -> list[object]:
+    parts: list[object] = []
+    for run in paragraph.runs:
+        for node in run._element.iter():
+            if node.tag != _DRAWING_BLIP_TAG:
+                continue
+            embed_id = node.get(_EMBED_ATTR)
+            if not embed_id:
+                continue
+            part = document.part.related_parts.get(embed_id)
+            if part is not None:
+                parts.append(part)
+    return parts
 
 
 def parse_docx(path: Path, config: SplitConfig, images_dir: Path | None = None) -> DocumentIR:
@@ -65,69 +108,88 @@ def parse_docx(path: Path, config: SplitConfig, images_dir: Path | None = None) 
     elements: list[Element] = []
     counter = 0
     image_counter = 0
+    pending_list_items: list[str] = []
 
     if images_dir is not None and config.image_extraction:
         images_dir.mkdir(parents=True, exist_ok=True)
 
-    for block in _iter_block_items(document):
-        if block.__class__.__name__ == "Paragraph":
-            text = block.text.strip()
-            if not text:
-                continue
-            level = _heading_level(block.style.name if block.style else None)
-            el_id, counter = next_element_id(counter)
-            if level is not None:
-                elements.append(Element(id=el_id, type="heading", text=text, level=level))
-            elif looks_like_section_title(text):
-                elements.append(Element(id=el_id, type="heading", text=text, level=2))
-            elif re.match(r"^[\-\*\u2022\u2023\u25E6\u2043\u2219]", text):
-                items = [line.strip().lstrip("-*• ").strip() for line in text.splitlines() if line.strip()]
-                elements.append(Element(id=el_id, type="list", items=items))
-            else:
-                elements.append(Element(id=el_id, type="paragraph", text=text))
+    def append_element(**kwargs) -> None:
+        nonlocal counter
+        element_id, counter = next_element_id(counter)
+        elements.append(Element(id=element_id, **kwargs))
 
-            for run in block.runs:
-                for drawing in run._element.findall(".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"):
-                    if not config.image_extraction or images_dir is None:
-                        continue
-                    embed_id = drawing.get(
-                        "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-                    )
-                    if not embed_id:
-                        continue
-                    part = document.part.related_parts.get(embed_id)
-                    if part is None:
-                        continue
-                    image_counter += 1
-                    ref = f"images/img-{image_counter:02d}.png"
-                    out_path = images_dir / f"img-{image_counter:02d}.png"
-                    out_path.write_bytes(part.blob)
-                    img_id, counter = next_element_id(counter)
-                    elements.append(
-                        Element(
-                            id=img_id,
-                            type="image",
-                            ref=ref,
-                            caption=text if block.alignment == WD_PARAGRAPH_ALIGNMENT.CENTER else None,
-                        )
-                    )
-        else:
+    def flush_list() -> None:
+        if not pending_list_items:
+            return
+        append_element(type="list", items=list(pending_list_items))
+        pending_list_items.clear()
+
+    for block in _iter_block_items(document):
+        if block.__class__.__name__ != "Paragraph":
+            flush_list()
             rows = _table_rows(block)
-            if not rows:
-                continue
-            el_id, counter = next_element_id(counter)
-            elements.append(Element(id=el_id, type="table", rows=rows))
+            if rows:
+                append_element(type="table", rows=rows)
+            continue
+
+        text = block.text.strip()
+        image_parts = _paragraph_image_parts(block, document)
+        level = _heading_level(block.style.name if block.style else None)
+        is_list = bool(text) and _is_list_paragraph(block)
+
+        if is_list:
+            item = _clean_list_item(text)
+            if item:
+                pending_list_items.append(item)
+        else:
+            flush_list()
+            if text:
+                if level is not None:
+                    append_element(type="heading", text=text, level=level)
+                elif looks_like_section_title(text):
+                    append_element(type="heading", text=text, level=2)
+                else:
+                    append_element(type="paragraph", text=text)
+
+        if image_parts:
+            # Images are source elements even when their paragraph contains no text.
+            # A centered text paragraph may act as a caption; ordinary surrounding
+            # prose remains a separate paragraph and is not duplicated as a caption.
+            flush_list()
+            caption = (
+                text
+                if text and block.alignment == WD_PARAGRAPH_ALIGNMENT.CENTER
+                else None
+            )
+            for part in image_parts:
+                if not config.image_extraction or images_dir is None:
+                    continue
+                image_counter += 1
+                suffix = _image_suffix(part)
+                filename = f"img-{image_counter:02d}{suffix}"
+                output_path = images_dir / filename
+                output_path.write_bytes(part.blob)
+                append_element(
+                    type="image",
+                    ref=f"images/{filename}",
+                    caption=caption,
+                    content_sha256=hashlib.sha256(part.blob).hexdigest(),
+                )
+
+    flush_list()
 
     meta = DocumentMeta(source_file=path.name)
     ir = DocumentIR(elements=elements, meta=meta)
     ir.recompute_word_counts()
-    for el in ir.elements:
-        if el.page_number is None:
-            prior = el.cumulative_word_count - el.word_count
-            el.page_number = max(
-                1, (prior + config.words_per_page - 1) // config.words_per_page
+    for element in ir.elements:
+        if element.page_number is None:
+            prior_words = element.cumulative_word_count - element.word_count
+            element.page_number = max(
+                1,
+                (prior_words + config.words_per_page - 1) // config.words_per_page,
             )
     meta.estimated_total_pages = max(
-        1, (meta.total_word_count + config.words_per_page - 1) // config.words_per_page
+        1,
+        (meta.total_word_count + config.words_per_page - 1) // config.words_per_page,
     )
     return ir

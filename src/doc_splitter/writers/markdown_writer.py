@@ -4,33 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from doc_splitter.config import SplitConfig
-from doc_splitter.ir.models import DocumentIR, Element
-from doc_splitter.naming import resolve_chunk_names
-from doc_splitter.structure_analyzer import ChunkPageRange
+from doc_splitter.ir.models import DocumentIR
+from doc_splitter.markdown_codec import (
+    ELEMENTS_END,
+    ELEMENTS_START,
+    render_marked_element,
+)
 from doc_splitter.storage import atomic_write_text
-
-
-def _render_element(el: Element) -> str:
-    if el.type == "heading":
-        return f"{'#' * (el.level or 1)} {el.text}"
-    if el.type == "paragraph":
-        return el.text
-    if el.type == "list":
-        return "\n".join(f"- {item}" for item in el.items)
-    if el.type == "table":
-        if not el.rows:
-            return ""
-        lines = []
-        for i, row in enumerate(el.rows):
-            lines.append("| " + " | ".join(row) + " |")
-            if i == 0:
-                lines.append("| " + " | ".join("---" for _ in row) + " |")
-        return "\n".join(lines)
-    if el.type == "image":
-        caption = el.caption or ""
-        return f"![{caption}]({el.ref})"
-    return ""
+from doc_splitter.structure_analyzer import ChunkPageRange
 
 
 def write_markdown_chunks(
@@ -53,8 +34,11 @@ def write_markdown_chunks(
         if pr.source_pages:
             page_label = f"~{pr.start_page}-{pr.end_page}"
 
-        body_parts = [_render_element(el) for el in ir.elements[start_idx : end_idx + 1]]
-        body = "\n\n".join(p for p in body_parts if p)
+        body_parts = [
+            render_marked_element(el)
+            for el in ir.elements[start_idx : end_idx + 1]
+        ]
+        body = "\n\n".join(body_parts)
         title = meta.get("title", "")
 
         header_lines = [
@@ -68,6 +52,6 @@ def write_markdown_chunks(
         content = "\n".join(header_lines) + "\n\n"
         if title:
             content += f"## {title}\n\n"
-        content += body + "\n"
+        content += f"{ELEMENTS_START}\n\n{body}\n\n{ELEMENTS_END}\n"
 
-        (output_dir / chunk_name).write_text(content, encoding="utf-8")
+        atomic_write_text(output_dir / chunk_name, content, encoding="utf-8")

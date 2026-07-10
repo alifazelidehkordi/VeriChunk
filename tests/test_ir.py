@@ -55,3 +55,16 @@ def test_resolved_page_number_from_bbox_only():
         bbox=BBox(x0=0, y0=0, x1=10, y1=10, page=7),
     )
     assert el.resolved_page_number() == 7
+
+def test_image_content_hash_roundtrip(tmp_path: Path):
+    element = Element(
+        id="el-001",
+        type="image",
+        ref="images/diagram.png",
+        content_sha256="a" * 64,
+    )
+    ir = DocumentIR(elements=[element], meta=DocumentMeta(source_file="t.docx"))
+    output = tmp_path / "ir.json"
+    save_ir(ir, output)
+    loaded = load_ir(output)
+    assert loaded.elements[0].content_sha256 == "a" * 64

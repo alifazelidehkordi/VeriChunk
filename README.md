@@ -46,10 +46,10 @@ Long study documents overwhelm AI assistants: they exceed context windows, trigg
 
 - **Semantic-first splitting** — prefers 5–12 page study sessions, allows page 13 for concept completion, and enforces an absolute 20-page cap.
 - **Safe-cut constraints** — the LLM can only choose from deterministic candidates, preventing mid-paragraph, mid-list, and mid-table cuts.
-- **Dual PDF parsing** — `pymupdf4llm` for Markdown-like extraction plus OpenDataLoader for layout reconciliation when Java is available.
-- **DOCX support** — headings, paragraphs, lists, tables, and embedded images via `python-docx`.
+- **Resilient PDF parsing** — `pymupdf4llm` for structured extraction, native PyMuPDF fallback for parser failures, and isolated OpenDataLoader reconciliation when Java is available.
+- **DOCX support** — headings, paragraphs, native Word numbering/lists, tables, and standalone or inline embedded images with original media extensions.
 - **CLI and MCP** — use `doc-splitter` directly or expose it as an MCP server to AI coding assistants.
-- **Verified output** — checks element coverage, duplicates, word-count drift, table rows, image references, and PDF page coverage.
+- **Content-derived verification** — reconstructs protected Markdown element blocks, compares them to IR, validates image hashes, and visually matches every output PDF page to its source page.
 - **Markdown and PDF chunks** — write semantic Markdown chunks, extracted PDF chunks, or both.
 - **Boundary overlap for PDFs** — includes adjacent boundary pages to reduce loss when conceptual cuts occur mid-page.
 - **Agent-authored bilingual study indexes** — provides verified context for the host agent to write `study-index-fa.md` and `study-index-en.md` with session links, study focus, page ranges, and estimated reading time.
@@ -64,7 +64,9 @@ flowchart TD
 
     B -->|PDF| C[pymupdf4llm Parser]
     B -->|PDF| D[OpenDataLoader Layout Parser]
+    C --> C2[Native PyMuPDF fallback]
     C --> E[Document IR]
+    C2 --> E
     D --> F[PDF Reconciler]
     F --> E
 
@@ -103,7 +105,7 @@ flowchart TD
 | Node.js | 18+ | MCP server only |
 | Host AI agent | — | Boundary decisions and chunk content analysis |
 
-Java is recommended for better PDF reconciliation. Parsing falls back to `pymupdf4llm` alone if OpenDataLoader cannot run.
+Java is recommended for better PDF reconciliation. OpenDataLoader runs in an isolated, timeout-bounded subprocess. If it cannot run, parsing continues; if `pymupdf4llm` itself fails, native PyMuPDF text extraction is used and recorded in reconciliation notes.
 
 ## Installation
 
@@ -599,7 +601,7 @@ For PDF output, conceptual chunks are decided by element boundaries, but written
 - **Very short documents** — may produce fewer or smaller chunks than the 5–12 page target.
 - **Very long concepts** — page 13 is a soft allowance; every later page needs two continuity reviewers plus evidence. The absolute cap is 20 pages, after which the chunk is marked as a forced continuation.
 - **Tables and lists** — treated atomically; the tool avoids cutting through them.
-- **OpenDataLoader failures** — parsing continues with `pymupdf4llm`; recorded in reconciliation notes.
+- **Parser failures** — OpenDataLoader failures are isolated and recorded; `pymupdf4llm` failures fall back to native PyMuPDF extraction. Blank or image-only pages are skipped and explicitly reported when OCR is disabled.
 - **PDF boundary precision** — PDF chunks are page-level extracts, not element-level visual crops.
 
 ## Troubleshooting
@@ -610,8 +612,8 @@ For PDF output, conceptual chunks are decided by element boundaries, but written
 | `Password-protected PDFs are not supported` | PDF requires a password. | Save an unlocked copy and rerun. |
 | `Java 11+ is required for OpenDataLoader` | Java missing or not on `PATH`. | Install a JDK; confirm `java -version`. |
 | `OpenDataLoader skipped` in report | OpenDataLoader failed; fallback succeeded. | Review reconciliation notes; fix Java if layout fidelity matters. |
-| Verification fails (missing elements) | Chunks or manifest inconsistent. | Re-run `write`; inspect `verification-report.json`. |
-| Verification fails (word-count mismatch) | Parser and written chunks diverged. | Inspect Markdown around tables/images; file an issue with sample input. |
+| Verification fails (missing elements) | Protected Markdown markers, chunk order, or manifest ranges are inconsistent. | Re-run `write`; do not hand-edit generated source blocks. Inspect `verification-report.json`. |
+| Verification fails (content/hash/page mismatch) | Generated Markdown, image bytes, or PDF pages changed after writing. | Restore or regenerate the affected chunk; inspect the exact element/page named in `verification-report.json`. |
 | `PDF output is only supported for PDF inputs` | `--output-format pdf` or `both` with DOCX. | Use `--output-format markdown` for DOCX. |
 | `Missing content analyses` during `index` | Not every chunk has committed analysis. | Run `analysis-context` and `commit-analysis` for each chunk. |
 | `Chunk files not yet read by the agent` during `commit-index` | Index committed without reading all chunk files. | Call `analysis-context` or `get_chunk` for every unread chunk ID listed in the error; both record reads. |
@@ -641,7 +643,8 @@ ducsplit/
 │   ├── boundary/                     # Safe candidates and boundary session
 │   ├── writers/                      # Markdown and PDF writers
 │   ├── content/                      # Chunk analysis workflow
-│   ├── verifier.py                   # Integrity verification
+│   ├── markdown_codec.py             # Canonical rendering and protected element markers
+│   ├── verifier.py                   # Content-derived integrity verification
 │   └── index_generator.py            # Agent-authored index context/commit
 └── tests/
 ```
@@ -660,8 +663,7 @@ PYTHONPATH=src python3 scripts/audit-golden-corpus.py \
   --output docs/baseline/golden-results.json
 ```
 
-The corpus and current known gaps are documented in
-[`docs/baseline/phase-0.md`](docs/baseline/phase-0.md).
+The frozen corpus originated in phase zero. Current parser and verifier results are documented in [`docs/phase-3/phase-3.md`](docs/phase-3/phase-3.md).
 
 Run the MCP server directly (waits for stdio MCP protocol messages):
 
@@ -682,7 +684,7 @@ Recommended workflow:
 
 - **LLM judgment is constrained** — the agent decides among safe options; it does not rewrite parser state freely.
 - **Agent laziness is rejected** — auto-generated reasons (`auto-cut`, `auto from section_headings`), template study-focus, and index commits without reading chunk files are caught by validators and refused.
-- **Verification is mandatory** — generated chunks are auditable and checked for loss or duplication.
+- **Verification is content-derived** — generated Markdown is reconstructed element by element, image bytes are hashed, and PDF pages are compared to rendered source pages rather than trusted metadata.
 - **Topic changes beat page counts** — 5–12 pages is the preferred range, page 13 is soft, and 20 pages is absolute.
 - **Provider-neutral review execution** — the MCP host can supply subagents, or the CLI can run an external JSON-in/JSON-out reviewer command concurrently; no provider SDK is hard-wired into the core.
 - **PDF fidelity and semantic precision differ** — Markdown is best for semantic processing; PDF output is best for visual study continuity.

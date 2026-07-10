@@ -1,10 +1,12 @@
-"""Parse PDF layout JSON using OpenDataLoader (deterministic local mode)."""
+"""Parse PDF layout JSON using OpenDataLoader in an isolated subprocess."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,44 +29,74 @@ class OpenDataLoaderError(RuntimeError):
     pass
 
 
-def check_java_available() -> None:
+def check_java_available(timeout_seconds: float = 10.0) -> None:
     if shutil.which("java") is None:
         raise OpenDataLoaderError(
-            "Java 11+ is required for OpenDataLoader. Install JDK from https://adoptium.net/"
+            "Java 11+ is required for OpenDataLoader. Install a supported JDK."
         )
-    proc = subprocess.run(
-        ["java", "-version"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            ["java", "-version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OpenDataLoaderError(
+            f"Java runtime check timed out after {timeout_seconds:g} seconds"
+        ) from exc
     if proc.returncode != 0:
         raise OpenDataLoaderError("Java runtime not working. Run: java -version")
 
 
-def parse_pdf_opendataloader(path: Path) -> list[LayoutElement]:
+def parse_pdf_opendataloader(
+    path: Path,
+    *,
+    timeout_seconds: float = 120.0,
+) -> list[LayoutElement]:
     check_java_available()
-    try:
-        import opendataloader_pdf
-    except ImportError as exc:
+    if importlib.util.find_spec("opendataloader_pdf") is None:
         raise OpenDataLoaderError(
             "opendataloader-pdf not installed. Install with: pip install opendataloader-pdf"
-        ) from exc
+        )
 
     path = path.expanduser().resolve()
+    converter = (
+        "import opendataloader_pdf, sys; "
+        "opendataloader_pdf.convert(input_path=sys.argv[1], "
+        "output_dir=sys.argv[2], format='json')"
+    )
     with tempfile.TemporaryDirectory(prefix=".odl-") as tmp:
         out_dir = Path(tmp) / "out"
         out_dir.mkdir()
-        opendataloader_pdf.convert(
-            input_path=str(path),
-            output_dir=str(out_dir),
-            format="json",
-        )
-        json_files = list(out_dir.glob("*.json"))
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c", converter, str(path), str(out_dir)],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise OpenDataLoaderError(
+                f"OpenDataLoader conversion timed out after {timeout_seconds:g} seconds"
+            ) from exc
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "unknown converter error").strip()
+            if len(detail) > 600:
+                detail = detail[-600:]
+            raise OpenDataLoaderError(f"OpenDataLoader conversion failed: {detail}")
+
+        json_files = sorted(out_dir.glob("*.json"))
         if not json_files:
             raise OpenDataLoaderError(f"No JSON output from OpenDataLoader for {path.name}")
-
-        data = json.loads(json_files[0].read_text(encoding="utf-8"))
+        try:
+            data = json.loads(json_files[0].read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise OpenDataLoaderError(
+                f"Invalid JSON output from OpenDataLoader for {path.name}: {exc}"
+            ) from exc
         return _extract_layout_elements(data)
 
 
@@ -86,13 +118,16 @@ def _extract_layout_elements(data: Any) -> list[LayoutElement]:
         if not isinstance(children, list):
             continue
         for child in children:
-            el = _layout_from_node(child, page_num)
-            if el is not None:
-                elements.append(el)
+            if not isinstance(child, dict):
+                continue
+            element = _layout_from_node(child, page_num)
+            if element is not None:
+                elements.append(element)
     return elements
 
 
 def _bbox_from(obj: dict[str, Any], page: int) -> tuple[float, float, float, float] | None:
+    del page
     box = obj.get("bbox") or obj.get("bounding_box") or obj.get("rect")
     if isinstance(box, dict):
         try:
@@ -105,7 +140,10 @@ def _bbox_from(obj: dict[str, Any], page: int) -> tuple[float, float, float, flo
         except (TypeError, ValueError):
             return None
     if isinstance(box, (list, tuple)) and len(box) >= 4:
-        return float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        try:
+            return float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        except (TypeError, ValueError):
+            return None
     return None
 
 
@@ -121,7 +159,7 @@ def _layout_from_node(node: dict[str, Any], page: int) -> LayoutElement | None:
             rows = []
             for row in raw_rows:
                 if isinstance(row, list):
-                    rows.append([str(c) for c in row])
+                    rows.append([str(cell) for cell in row])
                 elif isinstance(row, dict):
                     rows.append([str(row.get("text", ""))])
 

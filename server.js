@@ -49,7 +49,7 @@ function parseJsonOutput(output) {
   return JSON.parse(output.slice(idx));
 }
 
-const server = new McpServer({ name: "doc-splitter", version: "0.2.0" });
+const server = new McpServer({ name: "doc-splitter", version: "0.3.0" });
 server.server.onerror = (error) => debug(`server error: ${error?.stack || error}`);
 server.server.onclose = () => debug("server closed");
 
