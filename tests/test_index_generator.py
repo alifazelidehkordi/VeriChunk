@@ -99,6 +99,7 @@ def test_index_context_requires_agent_authored_commit(tmp_path: Path):
     assert ctx["total_chunks"] == 4
     assert ctx["chunks"][0]["topic_en"] == "Introduction"
     assert ctx["chunks"][0]["estimated_minutes"] == 4
+    assert ctx["output_files"]["map"].endswith("study-map.md")
     assert "Python has only prepared" in ctx["instructions"]
     assert "author the Markdown content yourself" in ctx["instructions"]
 
@@ -120,14 +121,39 @@ def test_index_context_requires_agent_authored_commit(tmp_path: Path):
 | 3 | [Results](03_results.pdf) |
 | 4 | [Discussion](04_discussion.pdf) |
 """
-    fa_path, en_path = commit_study_indexes(
+    study_map = """# Study Map
+
+## Topic Map
+
+| Theme | Sessions |
+|---|---|
+| Foundations | [Intro](01_intro.pdf), [Methods](02_methods.pdf) |
+| Analysis | [Results](03_results.pdf), [Discussion](04_discussion.pdf) |
+
+## Suggested Study Order
+
+1. Start with [Intro](01_intro.pdf) and [Methods](02_methods.pdf) before analysis.
+2. Continue with [Results](03_results.pdf) and [Discussion](04_discussion.pdf).
+
+## Session Directory
+
+| Session | File |
+|---:|---|
+| 1 | [Intro](01_intro.pdf) |
+| 2 | [Methods](02_methods.pdf) |
+| 3 | [Results](03_results.pdf) |
+| 4 | [Discussion](04_discussion.pdf) |
+"""
+    fa_path, en_path, map_path = commit_study_indexes(
         tmp_path,
         index_fa=fa_body,
         index_en=en_body,
+        study_map=study_map,
     )
 
     assert fa_path.read_text(encoding="utf-8") == fa_body
     assert en_path.read_text(encoding="utf-8") == en_body
+    assert map_path.read_text(encoding="utf-8") == study_map
 
 
 def test_index_context_blocks_chunks_that_need_boundary_review(tmp_path: Path):

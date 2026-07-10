@@ -7,14 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from doc_splitter.ir.models import DocumentIR
+from doc_splitter.storage import atomic_write_json
 
 
 def save_ir(ir: DocumentIR, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(ir.to_dict(), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(path, ir.to_dict())
 
 
 def load_ir(path: Path) -> DocumentIR:
@@ -23,11 +20,7 @@ def load_ir(path: Path) -> DocumentIR:
 
 
 def save_json(data: dict[str, Any], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(path, data)
 
 
 def load_json(path: Path) -> dict[str, Any]:

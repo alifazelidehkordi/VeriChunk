@@ -52,6 +52,7 @@ class Element:
     items: list[str] = field(default_factory=list)
     ref: str | None = None
     caption: str | None = None
+    content_sha256: str | None = None
     page_number: int | None = None
     bbox: BBox | None = None
     word_count: int = 0
@@ -100,6 +101,8 @@ class Element:
             data["ref"] = self.ref
             if self.caption:
                 data["caption"] = self.caption
+            if self.content_sha256:
+                data["content_sha256"] = self.content_sha256
         data["page_number"] = self.page_number
         data["bbox"] = self.bbox.to_dict() if self.bbox is not None else None
         data["word_count"] = self.word_count
@@ -118,6 +121,7 @@ class Element:
             items=data.get("items", []),
             ref=data.get("ref"),
             caption=data.get("caption"),
+            content_sha256=data.get("content_sha256"),
             page_number=int(page_number) if page_number is not None else None,
             bbox=BBox.from_dict(data["bbox"]) if data.get("bbox") else None,
             word_count=int(data.get("word_count", 0)),

@@ -1,0 +1,76 @@
+{
+  "elements": [
+    {
+      "id": "el-001",
+      "type": "heading",
+      "level": 1,
+      "text": "ACID BASE BALANCE",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 3,
+      "cumulative_word_count": 3
+    },
+    {
+      "id": "el-002",
+      "type": "paragraph",
+      "text": "Blood pH depends on respiratory and renal regulation.",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 8,
+      "cumulative_word_count": 11
+    },
+    {
+      "id": "el-003",
+      "type": "paragraph",
+      "text": "The bicarbonate buffer system limits acute pH shifts.",
+      "page_number": 2,
+      "bbox": null,
+      "word_count": 8,
+      "cumulative_word_count": 19
+    },
+    {
+      "id": "el-004",
+      "type": "paragraph",
+      "text": "Compensation changes carbon dioxide or bicarbonate.",
+      "page_number": 3,
+      "bbox": null,
+      "word_count": 6,
+      "cumulative_word_count": 25
+    },
+    {
+      "id": "el-005",
+      "type": "heading",
+      "level": 2,
+      "text": "Worked Example",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 2,
+      "cumulative_word_count": 27
+    },
+    {
+      "id": "el-006",
+      "type": "paragraph",
+      "text": "Interpret pH, carbon dioxide, and bicarbonate in order.",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 8,
+      "cumulative_word_count": 35
+    },
+    {
+      "id": "el-007",
+      "type": "paragraph",
+      "text": "The example applies the same acid base framework.",
+      "page_number": 5,
+      "bbox": null,
+      "word_count": 8,
+      "cumulative_word_count": 43
+    }
+  ],
+  "meta": {
+    "source_file": "subheading_same_topic.pdf",
+    "total_word_count": 43,
+    "estimated_total_pages": 5,
+    "skipped_pages": [],
+    "reconciliation_notes": []
+  }
+}

@@ -16,13 +16,13 @@ from doc_splitter.section_titles import (
 
 def test_looks_like_section_title_recognizes_generic_titles():
     assert looks_like_section_title("RECURSIVE TREE TRAVERSAL")
-    assert looks_like_section_title(
-        "SYSTEM DESIGN TRADEOFFS FOR DISTRIBUTED QUEUES"
-    )
+    assert looks_like_section_title("SYSTEM DESIGN TRADEOFFS FOR DISTRIBUTED QUEUES")
     assert looks_like_section_title("مبانی طراحی الگوریتم")
     assert not looks_like_section_title("CV = (SD/Mean) x 100")
     assert not looks_like_section_title("This page intentionally left blank")
-    assert not looks_like_section_title("Recursive calls are useful because they simplify repeated work.")
+    assert not looks_like_section_title(
+        "Recursive calls are useful because they simplify repeated work."
+    )
     assert not looks_like_section_title(
         "This chapter explains several examples, and it is really important."
     )
@@ -51,10 +51,7 @@ def test_validate_topic_rejects_sentence_like_title():
 
 
 def test_normalize_title_text_strips_pdf_markdown():
-    assert (
-        normalize_title_text("**RECURSIVE TREE TRAVERSAL**")
-        == "RECURSIVE TREE TRAVERSAL"
-    )
+    assert normalize_title_text("**RECURSIVE TREE TRAVERSAL**") == "RECURSIVE TREE TRAVERSAL"
     assert normalize_title_text("<u>Design constraints:</u>") == "Design constraints:"
 
 
@@ -98,7 +95,9 @@ class TestValidateBoundaryReason:
             validate_boundary_reason(",,,")
 
     def test_accepts_proper_reason(self):
-        validate_boundary_reason("Examples 1-3 belong together; new topic starts after summary paragraph.")
+        validate_boundary_reason(
+            "Examples 1-3 belong together; new topic starts after summary paragraph."
+        )
 
 
 class TestValidateAnalysisReason:
@@ -127,4 +126,6 @@ class TestValidateAnalysisReason:
             validate_analysis_reason(";;;")
 
     def test_accepts_proper_reason(self):
-        validate_analysis_reason("Chunk covers glucose metabolism investigations cohesively with clear diagnostic flow.")
+        validate_analysis_reason(
+            "Chunk covers glucose metabolism investigations cohesively with clear diagnostic flow."
+        )

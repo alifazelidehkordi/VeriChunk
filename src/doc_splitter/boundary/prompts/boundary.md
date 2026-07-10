@@ -1,35 +1,63 @@
 # Boundary Detection — Host Agent Instructions
 
-You are choosing a **conceptual split point** in a document. Do NOT pick the next heading by default. Read the content and decide where the current topic/discussion truly ends and a new independent topic begins.
+Choose a **conceptual split point**. Topic continuity is more important than
+hitting an exact page count, but a real topic change always wins over size.
 
-This is an agent decision. The tool only supplies safe candidates; it does not
-decide the conceptual boundary for you.
+## Priority order
+
+1. Confirmed topic change or change of learning objective.
+2. Natural completion of the current argument, lesson, example set, or unit.
+3. Structurally safe cut.
+4. Preferred chunk size.
+5. Visual headings.
+
+A heading is evidence, not an automatic split. A topic can also change without a
+heading.
 
 ## Rules
 
-1. You may ONLY choose from the provided `safe_candidates` list (element IDs).
-2. Never cut mid-paragraph, mid-table, or mid-list.
-3. Target chunk size is roughly 5–10 pages, but **concept completeness overrides page count**.
-4. If the current concept is not complete within the window, respond with `action: "extend"` and explain why.
-5. Provide a short `reason` for auditability (stored in manifest.json).
-6. **NEVER use generic or auto-generated reasons.** "auto-cut ~6000 words" is forbidden. Write a real conceptual reason explaining where the topic ends and why this cut is logical.
-7. The `reason` field must be your own writing — not copied from the parser, not auto-generated, not a word-count formula.
+1. Choose only from `safe_candidates` and never cut inside an element.
+2. When `required_topic_boundary` is present, cut at that exact element. It is
+   backed by independent review and cannot be crossed or overridden.
+3. The preferred maximum is 12 pages. Page 13 is a soft completion allowance.
+4. Extending from 12 to 13 requires a specific semantic reason.
+5. Every extension beyond page 13 requires at least two independent reviewer IDs
+   and at least two cited element IDs proving that the same topic continues.
+6. The window grows one page at a time. Do not jump directly to the hard limit.
+7. Twenty pages is an absolute cap. At that point choose the best safe candidate;
+   the system records a `forced_size_split` and links the continuation.
+8. Never extend across a confirmed topic change.
+9. Reasons must describe the actual conceptual relationship. Generic reasons,
+   word-count formulas, and `auto-cut` language are rejected.
 
-## Response format (JSON)
+## Cut response
 
 ```json
 {
   "action": "cut",
   "element_id": "el-042",
-  "reason": "Examples 1-3 are part of one argument; the next independent topic starts after the summary paragraph."
+  "reason": "The current mechanism and its examples conclude here; the next paragraph begins a separate learning objective."
 }
 ```
 
-Or to extend the window:
+## Extension to page 13
 
 ```json
 {
   "action": "extend",
-  "reason": "The current argument continues through the examples without a natural break yet."
+  "allow_oversize": true,
+  "reason": "The same derivation continues into its concluding example on the next page."
+}
+```
+
+## Extension beyond page 13
+
+```json
+{
+  "action": "extend",
+  "allow_oversize": true,
+  "reason": "Both reviewers confirm that the argument remains one continuous derivation.",
+  "continuity_evidence": ["el-118", "el-121"],
+  "continuity_reviewers": ["reviewer-a", "reviewer-b"]
 }
 ```

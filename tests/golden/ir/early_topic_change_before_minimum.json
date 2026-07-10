@@ -1,0 +1,67 @@
+{
+  "elements": [
+    {
+      "id": "el-001",
+      "type": "heading",
+      "level": 1,
+      "text": "INTRODUCTION TO STATISTICS",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 3,
+      "cumulative_word_count": 3
+    },
+    {
+      "id": "el-002",
+      "type": "paragraph",
+      "text": "Descriptive statistics summarize observed samples.",
+      "page_number": 1,
+      "bbox": null,
+      "word_count": 5,
+      "cumulative_word_count": 8
+    },
+    {
+      "id": "el-003",
+      "type": "paragraph",
+      "text": "Means and medians describe central tendency.",
+      "page_number": 2,
+      "bbox": null,
+      "word_count": 6,
+      "cumulative_word_count": 14
+    },
+    {
+      "id": "el-004",
+      "type": "heading",
+      "level": 1,
+      "text": "CARDIAC ELECTROPHYSIOLOGY",
+      "page_number": 3,
+      "bbox": null,
+      "word_count": 2,
+      "cumulative_word_count": 16
+    },
+    {
+      "id": "el-005",
+      "type": "paragraph",
+      "text": "Ion channels generate the cardiac action potential.",
+      "page_number": 3,
+      "bbox": null,
+      "word_count": 7,
+      "cumulative_word_count": 23
+    },
+    {
+      "id": "el-006",
+      "type": "paragraph",
+      "text": "Conduction coordinates atrial and ventricular activation.",
+      "page_number": 4,
+      "bbox": null,
+      "word_count": 6,
+      "cumulative_word_count": 29
+    }
+  ],
+  "meta": {
+    "source_file": "early_topic_change_before_minimum.pdf",
+    "total_word_count": 29,
+    "estimated_total_pages": 4,
+    "skipped_pages": [],
+    "reconciliation_notes": []
+  }
+}

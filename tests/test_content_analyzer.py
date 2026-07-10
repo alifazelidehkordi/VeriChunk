@@ -50,7 +50,10 @@ def test_commit_chunk_analysis_stores_study_focus(tmp_path: Path):
 
     session = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
     analysis = session["chunk_analyses"]["1"]
-    assert analysis["study_focus_fa"] == "تمرکز آموزشی: مفاهیم کلیدی، مثال‌های اصلی و اهداف یادگیری این جلسه."
+    assert (
+        analysis["study_focus_fa"]
+        == "تمرکز آموزشی: مفاهیم کلیدی، مثال‌های اصلی و اهداف یادگیری این جلسه."
+    )
     assert analysis["study_focus_en"] == "Educational study focus in English with key concepts."
 
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
@@ -77,6 +80,8 @@ def test_get_chunk_analysis_context_includes_section_headings(tmp_path: Path):
     ctx = get_chunk_analysis_context(tmp_path, 1)
     assert ctx["section_headings"] == ["RECURSIVE TREE TRAVERSAL"]
     assert ctx["provisional_topic"] == "RECURSIVE TREE TRAVERSAL"
+    session = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
+    assert session["chunks_read"] == [1]
 
 
 def test_commit_chunk_analysis_rejects_sentence_topic(tmp_path: Path):
@@ -123,3 +128,24 @@ def test_commit_chunk_analysis_rejects_empty_reason(tmp_path: Path):
             study_focus_en="Educational study focus in English with key concepts.",
             coherence="confident",
         )
+
+
+def test_invalid_chunk_analysis_does_not_mutate_session(tmp_path: Path):
+    _setup_session(tmp_path, total_chunks=1)
+    before = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
+
+    with pytest.raises(ValueError, match="Chunk 99 not found"):
+        commit_chunk_analysis(
+            tmp_path,
+            99,
+            topic_fa="عنوان معتبر",
+            topic_en="Valid session title",
+            study_focus_fa="تمرکز آموزشی معتبر شامل مفاهیم، مثال‌ها و اهداف اصلی جلسه.",
+            study_focus_en="A valid educational focus covering concepts, examples, and learning goals.",
+            coherence="confident",
+            reason="The supplied analysis describes a coherent educational unit.",
+        )
+
+    after = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
+    assert after["chunk_analyses"] == before["chunk_analyses"]
+    assert after["revision"] == before["revision"]

@@ -15,6 +15,8 @@ from doc_splitter.boundary.planner import SplitSession, load_session, save_sessi
 from doc_splitter.config import SplitConfig
 from doc_splitter.content.analyzer import read_chunk_content
 from doc_splitter.section_titles import validate_analysis
+from doc_splitter.storage import atomic_write_text
+from doc_splitter.workflow import COMPLETE, INDEX, require_stage, transition_stage
 
 
 def _page_label(chunk: dict[str, Any]) -> str:
@@ -87,6 +89,7 @@ def _validate_ready_for_index(
 def get_index_context(output_dir: Path, config: SplitConfig) -> dict[str, Any]:
     manifest = _load_manifest(output_dir)
     session = load_session(output_dir)
+    require_stage(session, INDEX, "build index context")
     _validate_ready_for_index(manifest, session)
 
     prompt_path = Path(__file__).parent / "index" / "prompts" / "index.md"
@@ -139,10 +142,13 @@ def get_index_context(output_dir: Path, config: SplitConfig) -> dict[str, Any]:
         "output_files": {
             "fa": str(output_dir / "study-index-fa.md"),
             "en": str(output_dir / "study-index-en.md"),
+            "map": str(output_dir / "study-map.md"),
         },
         "chunks": chunks,
         "chunks_read": session.chunks_read,
-        "chunks_unread": [i for i in range(1, len(manifest.get("chunks", [])) + 1) if i not in session.chunks_read],
+        "chunks_unread": [
+            i for i in range(1, len(manifest.get("chunks", [])) + 1) if i not in session.chunks_read
+        ],
         "instructions": prompt_path.read_text(encoding="utf-8"),
     }
 
@@ -175,6 +181,21 @@ def _validate_agent_index(
     _validate_index_quality(text, lang=lang, manifest=manifest)
 
 
+_STUDY_MAP_SECTIONS = (
+    "## Topic Map",
+    "## Suggested Study Order",
+    "## Session Directory",
+)
+
+
+def _validate_study_map(text: str, manifest: dict[str, Any]) -> None:
+    """Require a reusable document-level map, not a domain-specific template."""
+    _validate_agent_index(text, lang="Study map", manifest=manifest)
+    missing_sections = [section for section in _STUDY_MAP_SECTIONS if section not in text]
+    if missing_sections:
+        raise ValueError("Study map is missing required sections: " + ", ".join(missing_sections))
+
+
 def _validate_index_quality(
     text: str,
     *,
@@ -196,18 +217,23 @@ def commit_study_indexes(
     *,
     index_fa: str,
     index_en: str,
-) -> tuple[Path, Path]:
+    study_map: str,
+) -> tuple[Path, Path, Path]:
     manifest = _load_manifest(output_dir)
     session = load_session(output_dir)
+    require_stage(session, INDEX, "commit study indexes")
     _validate_ready_for_index(manifest, session)
     _validate_agent_index(index_fa, lang="Persian", manifest=manifest)
     _validate_agent_index(index_en, lang="English", manifest=manifest)
+    _validate_study_map(study_map, manifest)
 
     fa_path = output_dir / "study-index-fa.md"
     en_path = output_dir / "study-index-en.md"
-    fa_path.write_text(index_fa.rstrip() + "\n", encoding="utf-8")
-    en_path.write_text(index_en.rstrip() + "\n", encoding="utf-8")
+    map_path = output_dir / "study-map.md"
+    atomic_write_text(fa_path, index_fa.rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(en_path, index_en.rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(map_path, study_map.rstrip() + "\n", encoding="utf-8")
 
-    session.stage = "complete"
+    transition_stage(session, COMPLETE)
     save_session(session, output_dir)
-    return fa_path, en_path
+    return fa_path, en_path, map_path

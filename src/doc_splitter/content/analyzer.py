@@ -7,7 +7,12 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from doc_splitter.boundary.planner import SplitSession, load_session, save_session
+from doc_splitter.boundary.planner import (
+    SplitSession,
+    load_session,
+    record_chunk_read,
+    save_session,
+)
 from doc_splitter.ir.serialize import load_ir, save_json
 from doc_splitter.naming import slugify
 from doc_splitter.section_titles import (
@@ -15,6 +20,14 @@ from doc_splitter.section_titles import (
     list_section_headings,
     validate_analysis,
     validate_analysis_reason,
+)
+from doc_splitter.storage import atomic_write_text
+from doc_splitter.workflow import (
+    BOUNDARY_REPAIR,
+    CONTENT_ANALYSIS,
+    INDEX,
+    require_stage,
+    transition_stage,
 )
 
 
@@ -139,7 +152,8 @@ def _refresh_markdown_headers(output_dir: Path, manifest: dict) -> None:
         prev_line = f"<!-- continues-from: {prev_name} -->" if prev_name else None
         next_line = f"<!-- continues-to: {next_name} -->" if next_name else None
         title = chunk.get("title") or chunk.get("agent_topic_en") or f"Section {chunk['id']}"
-        path.write_text(
+        atomic_write_text(
+            path,
             _replace_markdown_header(
                 path.read_text(encoding="utf-8"),
                 section_line=section_line,
@@ -169,9 +183,7 @@ def _apply_agent_topic_filename(
         return
 
     used_slugs = {
-        c.get("slug", "")
-        for c in chunks
-        if int(c.get("id", 0)) != chunk_id and c.get("slug")
+        c.get("slug", "") for c in chunks if int(c.get("id", 0)) != chunk_id and c.get("slug")
     }
     slug = _unique_topic_slug(topic_en, chunk_id, used_slugs)
     base = f"{chunk_id:02d}_{slug}"
@@ -204,10 +216,7 @@ def _apply_agent_topic_filename(
     chunk["agent_topic_en"] = topic_en
     chunk["agent_topic_fa"] = analysis.get("topic_fa", "")
 
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    save_json(manifest, manifest_path)
     _refresh_markdown_headers(output_dir, manifest)
 
 
@@ -216,12 +225,15 @@ def get_chunk_analysis_context(
     chunk_id: int,
 ) -> dict[str, Any]:
     session = load_session(output_dir)
+    require_stage(session, CONTENT_ANALYSIS, "request chunk analysis context")
     manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
     chunks = manifest.get("chunks", [])
     chunk = next((c for c in chunks if c["id"] == chunk_id), None)
     if chunk is None:
         raise ValueError(f"Chunk {chunk_id} not found in manifest")
 
+    # Analysis reads the complete chunk, so it satisfies the index read gate too.
+    record_chunk_read(output_dir, chunk_id)
     content = read_chunk_content(output_dir, chunk)
 
     ir = load_ir(output_dir / "ir.json")
@@ -275,7 +287,14 @@ def commit_chunk_analysis(
         study_focus_en=study_focus_en,
     )
     validate_analysis_reason(reason)
+    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    chunks = manifest.get("chunks", [])
+    valid_chunk_ids = {int(chunk["id"]) for chunk in chunks}
+    if chunk_id not in valid_chunk_ids:
+        raise ValueError(f"Chunk {chunk_id} not found in manifest")
+
     session = load_session(output_dir)
+    require_stage(session, CONTENT_ANALYSIS, "commit chunk analysis")
     session.chunk_analyses[str(chunk_id)] = {
         "topic_fa": topic_fa,
         "topic_en": topic_en,
@@ -287,26 +306,70 @@ def commit_chunk_analysis(
     save_session(session, output_dir)
     _apply_agent_topic_filename(output_dir, session, chunk_id)
 
-    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
-    total = int(manifest.get("total_chunks", 0))
-    done = len(session.chunk_analyses)
+    valid_analysis_keys = {str(chunk_id) for chunk_id in valid_chunk_ids}
+    done = sum(1 for key in valid_analysis_keys if key in session.chunk_analyses)
+    total = len(valid_chunk_ids)
+    needs_review = [
+        int(key)
+        for key in valid_analysis_keys
+        if session.chunk_analyses.get(key, {}).get("coherence") == "needs_review"
+    ]
     if done >= total:
-        session.stage = "index"
+        _write_semantic_report(output_dir, session, valid_chunk_ids=valid_chunk_ids)
+        if needs_review:
+            by_id = {int(chunk["id"]): chunk for chunk in chunks}
+            session.repair_queue = [
+                {
+                    "chunk_id": chunk_id,
+                    "start_index": int(by_id[chunk_id].get("start_index", 0)),
+                    "end_index": int(by_id[chunk_id].get("end_index", 0)),
+                    "reason": session.chunk_analyses[str(chunk_id)].get("reason", ""),
+                }
+                for chunk_id in sorted(needs_review)
+            ]
+            session.active_repair = None
+            transition_stage(session, BOUNDARY_REPAIR)
+            save_session(session, output_dir)
+            return {
+                "status": "needs_boundary_repair",
+                "stage": session.stage,
+                "analyzed": done,
+                "total": total,
+                "chunks": sorted(needs_review),
+                "next": "request repair-context for one listed chunk",
+            }
+        transition_stage(session, INDEX)
         save_session(session, output_dir)
-        _write_semantic_report(output_dir, session)
-        return {"status": "complete", "analyzed": done, "total": total}
-    return {"status": "continue", "analyzed": done, "total": total}
+        return {
+            "status": "complete",
+            "stage": session.stage,
+            "analyzed": done,
+            "total": total,
+        }
+    return {
+        "status": "continue",
+        "stage": session.stage,
+        "analyzed": done,
+        "total": total,
+    }
 
 
-def _write_semantic_report(output_dir: Path, session: SplitSession) -> None:
+def _write_semantic_report(
+    output_dir: Path,
+    session: SplitSession,
+    *,
+    valid_chunk_ids: set[int],
+) -> None:
+    valid_keys = {str(chunk_id) for chunk_id in valid_chunk_ids}
+    analyses = {key: value for key, value in session.chunk_analyses.items() if key in valid_keys}
     needs_review = [
         {"chunk_id": int(k), **v}
-        for k, v in session.chunk_analyses.items()
+        for k, v in analyses.items()
         if v.get("coherence") == "needs_review"
     ]
     report = {
-        "total_chunks": len(session.chunk_analyses),
+        "total_chunks": len(valid_chunk_ids),
         "needs_review": needs_review,
-        "analyses": session.chunk_analyses,
+        "analyses": analyses,
     }
     save_json(report, output_dir / "semantic-review-report.json")

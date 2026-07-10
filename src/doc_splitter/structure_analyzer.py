@@ -137,9 +137,7 @@ def compute_chunk_page_ranges(
     for i, (start_idx, end_idx) in enumerate(ranges):
         source_pages = _pages_for_indices(ir, start_idx, end_idx, element_pages)
         if not source_pages:
-            result.append(
-                ChunkPageRange(0, 0, [], [], [], [])
-            )
+            result.append(ChunkPageRange(0, 0, [], [], [], []))
             continue
 
         start_page = source_pages[0]

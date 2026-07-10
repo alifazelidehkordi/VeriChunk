@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "corpus_schema_version": 1,
+  "page_policy": {
+    "status": "gap",
+    "desired": {
+      "target_min_pages": 5,
+      "preferred_max_pages": 12,
+      "soft_max_pages": 13,
+      "hard_max_pages": 20
+    },
+    "observed": {
+      "target_min_pages": 5,
+      "preferred_max_pages": 10,
+      "soft_max_pages": null,
+      "hard_max_pages": 13
+    }
+  },
+  "summary": {
+    "error": 1,
+    "gap": 4,
+    "match": 5
+  },
+  "cases": [
+    {
+      "id": "topic-change-with-heading",
+      "kind": "ir",
+      "status": "match",
+      "expected_topic_boundaries_after": [
+        "el-005"
+      ],
+      "detected_topic_boundaries_after": [
+        "el-005"
+      ],
+      "unexpected": [],
+      "missing": [],
+      "page_policy": null
+    },
+    {
+      "id": "topic-change-without-heading",
+      "kind": "ir",
+      "status": "gap",
+      "expected_topic_boundaries_after": [
+        "el-004"
+      ],
+      "detected_topic_boundaries_after": [],
+      "unexpected": [],
+      "missing": [
+        "el-004"
+      ],
+      "page_policy": null
+    },
+    {
+      "id": "subheading-same-topic",
+      "kind": "ir",
+      "status": "gap",
+      "expected_topic_boundaries_after": [],
+      "detected_topic_boundaries_after": [
+        "el-004"
+      ],
+      "unexpected": [
+        "el-004"
+      ],
+      "missing": [],
+      "page_policy": null
+    },
+    {
+      "id": "early-topic-change-before-minimum",
+      "kind": "ir",
+      "status": "match",
+      "expected_topic_boundaries_after": [
+        "el-003"
+      ],
+      "detected_topic_boundaries_after": [
+        "el-003"
+      ],
+      "unexpected": [],
+      "missing": [],
+      "page_policy": null
+    },
+    {
+      "id": "continuous-topic-17-pages",
+      "kind": "ir",
+      "status": "match",
+      "expected_topic_boundaries_after": [],
+      "detected_topic_boundaries_after": [],
+      "unexpected": [],
+      "missing": [],
+      "page_policy": {
+        "allowed_single_chunk_pages": 17,
+        "requires_extension_evidence": true
+      }
+    },
+    {
+      "id": "continuous-topic-25-pages",
+      "kind": "ir",
+      "status": "match",
+      "expected_topic_boundaries_after": [],
+      "detected_topic_boundaries_after": [],
+      "unexpected": [],
+      "missing": [],
+      "page_policy": {
+        "hard_max_pages": 20,
+        "forced_size_split": true,
+        "continues_to_next": true
+      }
+    },
+    {
+      "id": "table-on-topic-boundary",
+      "kind": "ir",
+      "status": "match",
+      "expected_topic_boundaries_after": [
+        "el-003"
+      ],
+      "detected_topic_boundaries_after": [
+        "el-003"
+      ],
+      "unexpected": [],
+      "missing": [],
+      "page_policy": null
+    },
+    {
+      "id": "image-on-topic-boundary",
+      "kind": "ir",
+      "status": "gap",
+      "expected_topic_boundaries_after": [
+        "el-003"
+      ],
+      "detected_topic_boundaries_after": [
+        "el-002"
+      ],
+      "unexpected": [
+        "el-002"
+      ],
+      "missing": [
+        "el-003"
+      ],
+      "page_policy": null
+    },
+    {
+      "id": "pdf-blank-middle-page",
+      "kind": "pdf",
+      "status": "error",
+      "error_type": "TypeError",
+      "error": "SkippedPage.__init__() got an unexpected keyword argument 'page_number'"
+    },
+    {
+      "id": "docx-list-and-standalone-image",
+      "kind": "docx",
+      "status": "gap",
+      "element_counts": {
+        "heading": 1,
+        "paragraph": 3,
+        "table": 1
+      },
+      "missing_element_counts": {
+        "list": 1,
+        "image": 1
+      },
+      "missing_list_items": [
+        "First standard Word bullet",
+        "Second standard Word bullet"
+      ]
+    }
+  ]
+}
