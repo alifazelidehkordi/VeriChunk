@@ -109,3 +109,89 @@ json.dump({
         "external-2",
         "external-3",
     }
+
+
+def test_command_backend_rejects_unbounded_output(tmp_path: Path):
+    from doc_splitter.agents.backend import CommandAgentBackend
+
+    reviewer = tmp_path / "noisy.py"
+    reviewer.write_text(
+        "#!/usr/bin/env python3\nimport sys\nsys.stdout.write('x' * 10000)\n",
+        encoding="utf-8",
+    )
+    reviewer.chmod(0o755)
+    ir = load_ir(GOLDEN_IR / "topic_change_without_heading.json")
+    batch = build_topic_change_review_batch(ir, SplitConfig(), workers=1)
+
+    import pytest
+    with pytest.raises(RuntimeError, match="exceeded 1024 bytes"):
+        asyncio.run(
+            run_review_batch(
+                batch,
+                CommandAgentBackend(str(reviewer), timeout_seconds=5, max_output_bytes=1024),
+                workers=1,
+                retries=0,
+            )
+        )
+
+
+def test_cli_accepts_topic_reviews_from_file(tmp_path: Path):
+    import json
+
+    ir = load_ir(GOLDEN_IR / "topic_change_without_heading.json")
+    config = SplitConfig(output_dir=tmp_path)
+    save_ir(ir, tmp_path / "ir.json")
+    init_session(Path("shift.pdf"), config, ir)
+    batch = build_topic_change_review_batch(ir, config, workers=1)
+    tasks = [task for worker in batch["batches"] for task in worker]
+    reviews = [
+        {
+            "review_id": task["review_id"],
+            "reviewer_id": f"file-{task['reviewer_slot']}",
+            "decision": "split",
+            "confidence": 0.9,
+            "reason": "The learning objective and terminology change across this boundary.",
+            "evidence_before": [task["before_element_ids"][-1]],
+            "evidence_after": [task["after_element_ids"][0]],
+        }
+        for task in tasks
+    ]
+    review_file = tmp_path / "reviews.json"
+    review_file.write_text(json.dumps(reviews), encoding="utf-8")
+
+    code = main(
+        [
+            "commit-topic-reviews",
+            "--out",
+            str(tmp_path),
+            "--reviews-file",
+            str(review_file),
+        ]
+    )
+
+    assert code == 0
+    assert load_session(tmp_path).stage == "boundary"
+
+
+def test_scheduler_cancels_sibling_reviews_after_fatal_failure():
+    class FailingBackend:
+        def __init__(self) -> None:
+            self.cancelled = 0
+
+        async def review(self, task):
+            if task["reviewer_slot"] == 1:
+                raise RuntimeError("fatal reviewer failure")
+            try:
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                self.cancelled += 1
+                raise
+
+    ir = load_ir(GOLDEN_IR / "topic_change_without_heading.json")
+    batch = build_topic_change_review_batch(ir, SplitConfig(), workers=3)
+    backend = FailingBackend()
+
+    import pytest
+    with pytest.raises(RuntimeError, match="fatal reviewer failure"):
+        asyncio.run(run_review_batch(batch, backend, workers=3, retries=0))
+    assert backend.cancelled >= 1

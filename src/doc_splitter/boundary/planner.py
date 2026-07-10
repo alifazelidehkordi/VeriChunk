@@ -51,6 +51,9 @@ class SplitSession:
     chunk_analyses: dict[str, dict[str, Any]] = field(default_factory=dict)
     chunks_read: list[int] = field(default_factory=list)
     extensions: list[dict[str, Any]] = field(default_factory=list)
+    repair_queue: list[dict[str, Any]] = field(default_factory=list)
+    active_repair: dict[str, Any] | None = None
+    repair_history: list[dict[str, Any]] = field(default_factory=list)
     revision: int = 0
     updated_at: str | None = None
     last_error: str | None = None
@@ -69,6 +72,9 @@ class SplitSession:
             "chunk_analyses": self.chunk_analyses,
             "chunks_read": self.chunks_read,
             "extensions": self.extensions,
+            "repair_queue": self.repair_queue,
+            "active_repair": self.active_repair,
+            "repair_history": self.repair_history,
             "revision": self.revision,
             "updated_at": self.updated_at,
             "last_error": self.last_error,
@@ -89,6 +95,9 @@ class SplitSession:
             chunk_analyses=dict(data.get("chunk_analyses", {})),
             chunks_read=list(data.get("chunks_read", [])),
             extensions=list(data.get("extensions", [])),
+            repair_queue=list(data.get("repair_queue", [])),
+            active_repair=data.get("active_repair"),
+            repair_history=list(data.get("repair_history", [])),
             revision=int(data.get("revision", 0)),
             updated_at=data.get("updated_at"),
             last_error=data.get("last_error"),

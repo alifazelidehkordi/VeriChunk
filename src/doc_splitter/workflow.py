@@ -11,6 +11,7 @@ BOUNDARY_COMPLETE = "boundary_complete"
 WRITING = "writing"
 VERIFICATION = "verification"
 CONTENT_ANALYSIS = "content_analysis"
+BOUNDARY_REPAIR = "boundary_repair"
 INDEX = "index"
 COMPLETE = "complete"
 FAILED = "failed"
@@ -23,6 +24,7 @@ ALL_STAGES = frozenset(
         WRITING,
         VERIFICATION,
         CONTENT_ANALYSIS,
+        BOUNDARY_REPAIR,
         INDEX,
         COMPLETE,
         FAILED,
@@ -35,7 +37,8 @@ _ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     BOUNDARY_COMPLETE: frozenset({WRITING, FAILED}),
     WRITING: frozenset({VERIFICATION, FAILED}),
     VERIFICATION: frozenset({CONTENT_ANALYSIS, FAILED}),
-    CONTENT_ANALYSIS: frozenset({INDEX, FAILED}),
+    CONTENT_ANALYSIS: frozenset({INDEX, BOUNDARY_REPAIR, FAILED}),
+    BOUNDARY_REPAIR: frozenset({WRITING, FAILED}),
     INDEX: frozenset({COMPLETE, FAILED}),
     COMPLETE: frozenset(),
     FAILED: frozenset({WRITING, VERIFICATION}),

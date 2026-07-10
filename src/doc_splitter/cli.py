@@ -24,9 +24,11 @@ from doc_splitter.content.analyzer import (
 )
 from doc_splitter.index_generator import commit_study_indexes
 from doc_splitter.ir.serialize import load_ir
+from doc_splitter.repair import get_boundary_repair_context
 from doc_splitter.orchestrator import (
     init_session,
     parse_document,
+    run_boundary_repair,
     run_index_context,
     run_write_and_verify,
 )
@@ -47,6 +49,8 @@ _SESSION_RESTORE_COMMANDS = frozenset(
         "commit-index",
         "analysis-context",
         "commit-analysis",
+        "repair-context",
+        "repair-boundary",
         "get-chunk",
     }
 )
@@ -200,12 +204,17 @@ def cmd_topic_review_context(args: argparse.Namespace) -> int:
 
 def cmd_commit_topic_reviews(args: argparse.Namespace) -> int:
     config = _resolve_config(args)
+    if args.reviews and args.reviews_file:
+        raise ValueError("Use either --reviews or --reviews-file, not both")
+    raw = args.reviews_file.read_text(encoding="utf-8") if args.reviews_file else args.reviews
+    if raw is None:
+        raise ValueError("--reviews or --reviews-file is required")
     try:
-        reviews = json.loads(args.reviews)
+        reviews = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"--reviews must be a JSON array: {exc.msg}") from exc
+        raise ValueError(f"Reviews must be a JSON array: {exc.msg}") from exc
     if not isinstance(reviews, list):
-        raise ValueError("--reviews must be a JSON array")
+        raise ValueError("Reviews must be a JSON array")
     ir = load_ir(config.output_dir / "ir.json")
     result = commit_topic_change_reviews(
         ir,
@@ -230,7 +239,9 @@ def cmd_run_topic_reviews(args: argparse.Namespace) -> int:
         if not args.agent_command:
             raise ValueError("--agent-command is required for --backend command")
         backend = CommandAgentBackend(
-            args.agent_command, timeout_seconds=args.timeout_seconds
+            args.agent_command,
+            timeout_seconds=args.timeout_seconds,
+            max_output_bytes=args.agent_max_output_bytes,
         )
     else:
         backend = HeuristicAgentBackend()
@@ -316,6 +327,24 @@ def cmd_commit_analysis(args: argparse.Namespace) -> int:
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
+
+
+def cmd_repair_context(args: argparse.Namespace) -> int:
+    ctx = get_boundary_repair_context(args.output_dir, args.chunk_id)
+    print(json.dumps(ctx, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_repair_boundary(args: argparse.Namespace) -> int:
+    config = _resolve_config(args)
+    result = run_boundary_repair(
+        config,
+        chunk_id=args.chunk_id,
+        cut_element_ids=args.cut_element_id,
+        reason=args.reason,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
 
 def cmd_index(args: argparse.Namespace) -> int:
     config = _resolve_config(args)
@@ -416,7 +445,8 @@ def build_parser() -> argparse.ArgumentParser:
         "commit-topic-reviews",
         help="Commit parallel topic-change review votes as JSON",
     )
-    p_ctr.add_argument("--reviews", required=True)
+    p_ctr.add_argument("--reviews", default=None)
+    p_ctr.add_argument("--reviews-file", type=Path, default=None)
     _add_config_args(p_ctr)
     p_ctr.set_defaults(func=cmd_commit_topic_reviews)
 
@@ -429,6 +459,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_rtr.add_argument("--agent-command", default=None)
     p_rtr.add_argument("--timeout-seconds", type=float, default=120.0)
     p_rtr.add_argument("--retries", type=int, default=1)
+    p_rtr.add_argument("--agent-max-output-bytes", type=int, default=2 * 1024 * 1024)
     _add_config_args(p_rtr)
     p_rtr.set_defaults(func=cmd_run_topic_reviews)
 
@@ -460,6 +491,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_ca.add_argument("--reason", default="")
     p_ca.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
     p_ca.set_defaults(func=cmd_commit_analysis)
+
+
+    p_rc = sub.add_parser("repair-context", help="Get a safe split-only repair context")
+    p_rc.add_argument("--chunk-id", type=int, required=True)
+    p_rc.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
+    p_rc.set_defaults(func=cmd_repair_context)
+
+    p_rb = sub.add_parser("repair-boundary", help="Split an incoherent chunk and reverify output")
+    p_rb.add_argument("--chunk-id", type=int, required=True)
+    p_rb.add_argument("--cut-element-id", action="append", required=True)
+    p_rb.add_argument("--reason", required=True)
+    _add_config_args(p_rb)
+    p_rb.set_defaults(func=cmd_repair_boundary)
 
     p_index = sub.add_parser("index", help="Get context for agent-authored study indexes")
     _add_config_args(p_index)

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 from doc_splitter.boundary.planner import (
@@ -10,7 +13,7 @@ from doc_splitter.boundary.planner import (
     get_topic_review_progress,
 )
 from doc_splitter.config import SplitConfig
-from doc_splitter.format_detector import InputFormat, detect_format
+from doc_splitter.format_detector import InputFormat
 from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import save_json
 from doc_splitter.naming import resolve_chunk_names
@@ -24,7 +27,11 @@ from doc_splitter.structure_analyzer import (
 )
 
 _CHUNK_FILE_RE = re.compile(r"^\d{2}_.+\.(md|pdf)$")
-from doc_splitter.writers.markdown_writer import write_markdown_chunks
+from doc_splitter.storage import atomic_write_text
+from doc_splitter.writers.markdown_writer import (
+    extract_marked_section,
+    render_markdown_chunk,
+)
 from doc_splitter.writers.pdf_writer import write_pdf_chunks
 
 
@@ -165,6 +172,52 @@ def _validate_output_format(config: SplitConfig, input_format: InputFormat | Non
         raise ValueError("source_path is required for PDF output format.")
 
 
+def _load_previous_manifest(output_dir: Path) -> dict | None:
+    path = output_dir / "manifest.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _range_key(chunk: dict) -> tuple[int, int]:
+    return int(chunk.get("start_index", -1)), int(chunk.get("end_index", -1))
+
+
+def _remap_session_metadata(
+    session: SplitSession,
+    previous_manifest: dict | None,
+    ranges: list[tuple[int, int]],
+) -> dict[tuple[int, int], dict]:
+    if not previous_manifest:
+        return {}
+    old_by_range = {
+        _range_key(chunk): chunk
+        for chunk in previous_manifest.get("chunks", [])
+        if _range_key(chunk)[0] >= 0
+    }
+    previous_analyses = dict(session.chunk_analyses)
+    previous_reads = set(session.chunks_read)
+    remapped_analyses: dict[str, dict] = {}
+    remapped_reads: list[int] = []
+    for new_id, range_key in enumerate(ranges, start=1):
+        old = old_by_range.get(range_key)
+        if not old:
+            continue
+        old_id = int(old.get("id", 0))
+        analysis = previous_analyses.get(str(old_id))
+        if analysis:
+            remapped_analyses[str(new_id)] = analysis
+        if old_id in previous_reads:
+            remapped_reads.append(new_id)
+    session.chunk_analyses = remapped_analyses
+    session.chunks_read = remapped_reads
+    return old_by_range
+
+
 def write_chunks(
     ir: DocumentIR,
     session: SplitSession,
@@ -172,6 +225,7 @@ def write_chunks(
     output_dir: Path,
     *,
     input_format: InputFormat | None = None,
+    reuse_existing: bool = False,
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     _validate_output_format(config, input_format)
@@ -179,23 +233,83 @@ def write_chunks(
     ranges = _chunk_ranges(ir, session, config)
     total_chunks = len(ranges)
     page_ranges = compute_chunk_page_ranges(ir, ranges, config)
+    previous_manifest = _load_previous_manifest(output_dir) if reuse_existing else None
+    old_by_range = _remap_session_metadata(session, previous_manifest, ranges)
 
     write_md = config.output_format in ("markdown", "both")
     write_pdf = config.output_format in ("pdf", "both")
+    md_names = resolve_chunk_names(ir, session, ranges, config, ext="md") if write_md else []
+    pdf_names = resolve_chunk_names(ir, session, ranges, config, ext="pdf") if write_pdf else []
 
-    md_names = (
-        resolve_chunk_names(ir, session, ranges, config, ext="md") if write_md else []
-    )
-    pdf_names = (
-        resolve_chunk_names(ir, session, ranges, config, ext="pdf") if write_pdf else []
-    )
+    reused_chunk_ids: list[int] = []
+    rewritten_chunk_ids: list[int] = []
+    with tempfile.TemporaryDirectory(prefix="doc-splitter-reuse-") as temp_name:
+        temp_dir = Path(temp_name)
+        preserved: dict[tuple[int, str], Path] = {}
+        for i, range_key in enumerate(ranges, start=1):
+            old = old_by_range.get(range_key)
+            if not old:
+                continue
+            if write_md:
+                old_name = old.get("markdown_file") or (
+                    old.get("file") if str(old.get("file", "")).endswith(".md") else None
+                )
+                if old_name and (output_dir / old_name).is_file():
+                    target = temp_dir / f"{i:04d}.md"
+                    shutil.copy2(output_dir / old_name, target)
+                    preserved[(i, "md")] = target
+            if write_pdf:
+                old_name = old.get("pdf_file") or (
+                    old.get("file") if str(old.get("file", "")).endswith(".pdf") else None
+                )
+                if old_name and (output_dir / old_name).is_file():
+                    target = temp_dir / f"{i:04d}.pdf"
+                    shutil.copy2(output_dir / old_name, target)
+                    preserved[(i, "pdf")] = target
 
-    if write_md:
-        write_markdown_chunks(
-            ir, ranges, page_ranges, md_names, output_dir, total_chunks
-        )
-    if write_pdf:
-        write_pdf_chunks(config.source_path, page_ranges, pdf_names, output_dir)
+        for i, (start_idx, end_idx) in enumerate(ranges, start=1):
+            reused_body = False
+            if write_md:
+                meta = md_names[i - 1]
+                prev_name = md_names[i - 2]["file"] if i > 1 else None
+                next_name = md_names[i]["file"] if i < total_chunks else None
+                marked_section = None
+                preserved_md = preserved.get((i, "md"))
+                if preserved_md:
+                    marked_section = extract_marked_section(
+                        preserved_md.read_text(encoding="utf-8")
+                    )
+                content = render_markdown_chunk(
+                    ir,
+                    start_idx=start_idx,
+                    end_idx=end_idx,
+                    page_range=page_ranges[i - 1],
+                    meta=meta,
+                    chunk_number=i,
+                    total_chunks=total_chunks,
+                    prev_name=prev_name,
+                    next_name=next_name,
+                    marked_section=marked_section,
+                )
+                atomic_write_text(output_dir / meta["file"], content, encoding="utf-8")
+                reused_body = marked_section is not None
+            if write_pdf:
+                meta = pdf_names[i - 1]
+                preserved_pdf = preserved.get((i, "pdf"))
+                if preserved_pdf:
+                    shutil.copy2(preserved_pdf, output_dir / meta["file"])
+                    reused_body = True if not write_md else reused_body
+                else:
+                    write_pdf_chunks(
+                        config.source_path,
+                        [page_ranges[i - 1]],
+                        [meta],
+                        output_dir,
+                    )
+            if reused_body and old_by_range.get((start_idx, end_idx)):
+                reused_chunk_ids.append(i)
+            else:
+                rewritten_chunk_ids.append(i)
 
     manifest_chunks: list[dict] = []
     for i, (start_idx, end_idx) in enumerate(ranges, start=1):
@@ -206,12 +320,7 @@ def write_chunks(
 
         word_count = sum(ir.elements[j].word_count for j in range(start_idx, end_idx + 1))
         element_ids = [ir.elements[j].id for j in range(start_idx, end_idx + 1)]
-        boundary_reason = ""
-        boundary_meta: dict = {}
-        if i - 1 < len(session.boundaries):
-            boundary_meta = session.boundaries[i - 1]
-            boundary_reason = boundary_meta.get("reason", "")
-
+        boundary_meta = session.boundaries[i - 1] if i - 1 < len(session.boundaries) else {}
         chunk_entry: dict = {
             "id": i,
             "file": primary["file"],
@@ -229,11 +338,12 @@ def write_chunks(
             "pdf_pages": pr.pdf_pages,
             "overlap_pages": {"prev": pr.overlap_prev, "next": pr.overlap_next},
             "word_count": word_count,
-            "boundary_reason": boundary_reason,
+            "boundary_reason": boundary_meta.get("reason", ""),
             "split_type": boundary_meta.get("split_type", "conceptual"),
             "continues_to_next": bool(boundary_meta.get("continues_to_next", False)),
             "continues_from_previous": bool(boundary_meta.get("continues_from_previous", False)),
             "extension_evidence": boundary_meta.get("extension_evidence", []),
+            "repair_of_chunk": boundary_meta.get("repair_of_chunk"),
             "h1_chapter": active_h1_for_element(ir, start_idx),
         }
         if md_meta:
@@ -258,6 +368,11 @@ def write_chunks(
         "chunks": manifest_chunks,
         "skipped_pages": [p.to_dict() for p in ir.meta.skipped_pages],
         "reconciliation_notes": ir.meta.reconciliation_notes,
+        "write_summary": {
+            "mode": "repair" if reuse_existing else "initial",
+            "reused_chunk_bodies": reused_chunk_ids,
+            "rewritten_chunks": rewritten_chunk_ids,
+        },
     }
     manifest_path = output_dir / "manifest.json"
     save_json(manifest, manifest_path)

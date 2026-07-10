@@ -15,7 +15,13 @@ from doc_splitter.boundary.planner import (
 )
 from doc_splitter.ir.serialize import load_ir, save_json
 from doc_splitter.storage import atomic_write_text
-from doc_splitter.workflow import CONTENT_ANALYSIS, INDEX, require_stage, transition_stage
+from doc_splitter.workflow import (
+    BOUNDARY_REPAIR,
+    CONTENT_ANALYSIS,
+    INDEX,
+    require_stage,
+    transition_stage,
+)
 from doc_splitter.naming import slugify
 from doc_splitter.section_titles import (
     infer_chunk_topic,
@@ -313,11 +319,26 @@ def commit_chunk_analysis(
     if done >= total:
         _write_semantic_report(output_dir, session, valid_chunk_ids=valid_chunk_ids)
         if needs_review:
+            by_id = {int(chunk["id"]): chunk for chunk in chunks}
+            session.repair_queue = [
+                {
+                    "chunk_id": chunk_id,
+                    "start_index": int(by_id[chunk_id].get("start_index", 0)),
+                    "end_index": int(by_id[chunk_id].get("end_index", 0)),
+                    "reason": session.chunk_analyses[str(chunk_id)].get("reason", ""),
+                }
+                for chunk_id in sorted(needs_review)
+            ]
+            session.active_repair = None
+            transition_stage(session, BOUNDARY_REPAIR)
+            save_session(session, output_dir)
             return {
-                "status": "needs_boundary_review",
+                "status": "needs_boundary_repair",
+                "stage": session.stage,
                 "analyzed": done,
                 "total": total,
                 "chunks": sorted(needs_review),
+                "next": "request repair-context for one listed chunk",
             }
         transition_stage(session, INDEX)
         save_session(session, output_dir)

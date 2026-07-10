@@ -50,6 +50,8 @@ Long study documents overwhelm AI assistants: they exceed context windows, trigg
 - **DOCX support** — headings, paragraphs, native Word numbering/lists, tables, and standalone or inline embedded images with original media extensions.
 - **CLI and MCP** — use `doc-splitter` directly or expose it as an MCP server to AI coding assistants.
 - **Content-derived verification** — reconstructs protected Markdown element blocks, compares them to IR, validates image hashes, and visually matches every output PDF page to its source page.
+- **Boundary repair loop** — incoherent chunks return to a constrained split-only repair stage; unchanged chunk bodies and analyses are preserved, changed chunks are rewritten and verified again.
+- **Bounded process execution** — MCP and external reviewer processes have timeout, cancellation, output-size limits, and strict JSON handling.
 - **Markdown and PDF chunks** — write semantic Markdown chunks, extracted PDF chunks, or both.
 - **Boundary overlap for PDFs** — includes adjacent boundary pages to reduce loss when conceptual cuts occur mid-page.
 - **Agent-authored bilingual study indexes** — provides verified context for the host agent to write `study-index-fa.md` and `study-index-en.md` with session links, study focus, page ranges, and estimated reading time.
@@ -249,6 +251,19 @@ doc-splitter commit-analysis \
   --reason "The chunk covers one continuous regulatory mechanism."
 ```
 
+When an analysis uses `--coherence needs_review`, the workflow enters `boundary_repair` after all current chunks are analyzed. Inspect the queued chunk and choose only internal safe cuts:
+
+```bash
+doc-splitter repair-context --out ./output/book --chunk-id 4
+doc-splitter repair-boundary \
+  --out ./output/book \
+  --chunk-id 4 \
+  --cut-element-id el-118 \
+  --reason "The diagnostic framework concludes before treatment planning begins."
+```
+
+The repaired plan is written and verified immediately. Analyses for unchanged ranges are retained; only new or changed chunks return to `content_analysis`.
+
 Ask the host agent to write the final indexes after every chunk has analysis:
 
 ```bash
@@ -330,6 +345,8 @@ The MCP workflow remains host-driven. The optional CLI command backend can invok
 | `doc-splitter get-chunk` | Read one chunk's content by numeric ID. |
 | `doc-splitter analysis-context` | Print full chunk content and analysis instructions. |
 | `doc-splitter commit-analysis` | Store bilingual topic, study focus, coherence, and reason for one chunk. |
+| `doc-splitter repair-context` | Return the queued incoherent chunk and internal safe repair cuts. |
+| `doc-splitter repair-boundary` | Split one queued chunk, rewrite affected outputs, and verify again. |
 | `doc-splitter index` | Return context for agent-authored bilingual indexes and `study-map.md`. |
 | `doc-splitter commit-index` | Store Persian, English, and document-level study-map indexes. |
 
@@ -393,7 +410,11 @@ Returns JSON with `status`, `chunk_number`, `content_window`, `safe_candidates`,
 
 ### `commit-analysis`
 
-`coherence` must be `confident` or `needs_review`. When all chunks have analysis, `semantic-review-report.json` is written.
+`coherence` must be `confident` or `needs_review`. When all chunks have analysis, `semantic-review-report.json` is written. Any `needs_review` result changes the stage to `boundary_repair`; indexing remains locked.
+
+### `repair-context` / `repair-boundary`
+
+`repair-context` exposes only safe internal cut points for one queued incoherent chunk. `repair-boundary` accepts one or more repeated `--cut-element-id` values, preserves the original final boundary, rewrites only changed chunk bodies, reuses exact unchanged ranges, reruns verification, and returns to `content_analysis`. Repair cannot merge across an existing boundary or expand beyond the queued chunk.
 
 ### `index`
 
@@ -411,17 +432,19 @@ Stores `study-index-fa.md`, `study-index-en.md`, and `study-map.md` authored by 
 | `get_boundary_context` | optional `output_dir` | no | Returns the current content window and safe cut candidates. |
 | `commit_boundary` | `action`, optional `element_id`, `reason`, `allow_oversize`, `continuity_evidence`, `continuity_reviewers`, `output_dir` | yes | Commits a cut or one-page evidence-gated extension. |
 | `get_topic_change_review_batch` | optional `output_dir`, `workers` | no | Returns three-role semantic review tasks, including heading-free change points. |
-| `run_parallel_topic_reviews` | optional `output_dir`, `workers`, `timeout_seconds`, `retries` | yes | Runs the operator-configured `DOC_SPLITTER_AGENT_COMMAND` concurrently and commits its votes. |
+| `run_parallel_topic_reviews` | optional `output_dir`, `workers`, `timeout_seconds`, `retries`, `max_output_bytes` | yes | Runs the operator-configured `DOC_SPLITTER_AGENT_COMMAND` concurrently and commits its votes. |
 | `commit_topic_change_reviews` | evidence-backed `reviews`, optional `output_dir` | yes | Stores votes; two `split` votes create a hard boundary and unresolved disagreement blocks planning. |
 | `write_chunks` | `output_format`, optional `output_dir`, `overlap_pages` | yes | Requires an explicit Markdown, PDF, or both choice, then writes chunks and runs verification. |
 | `get_chunk` | `chunk_id`, optional `output_dir` | no | Reads generated chunk content. |
 | `verify_integrity` | optional `output_dir` | no | Re-runs verification. |
 | `get_chunk_analysis_context` | `chunk_id`, optional `output_dir` | no | Returns full chunk content for analysis. |
 | `commit_chunk_analysis` | `chunk_id`, `topic_fa`, `topic_en`, `study_focus_fa`, `study_focus_en`, `coherence`, optional `reason`, `output_dir` | yes | Stores bilingual chunk analysis. |
+| `get_boundary_repair_context` | `chunk_id`, optional `output_dir` | no | Returns a queued incoherent chunk with safe internal repair candidates. |
+| `repair_chunk_boundaries` | `chunk_id`, `cut_element_ids`, `reason`, optional `output_dir` | yes | Applies a split-only repair, rewrites affected chunks, and verifies again. |
 | `get_study_index_context` | optional `output_dir`, `reading_speed_wpm` | no | Returns context for agent-authored Persian and English study indexes. |
 | `commit_study_index` | `index_fa`, `index_en`, `study_map`, optional `output_dir` | yes | Stores final bilingual indexes and a generic document-level study map. |
 
-The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`. Set `DOC_SPLITTER_AGENT_COMMAND` to enable the server-side parallel reviewer tool without exposing an arbitrary command in tool inputs.
+The MCP server is a bounded Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`. Set `DOC_SPLITTER_AGENT_COMMAND` to enable the server-side parallel reviewer tool without exposing an arbitrary command in tool inputs. `DOC_SPLITTER_CLI_TIMEOUT_MS` and `DOC_SPLITTER_MAX_OUTPUT_BYTES` control process limits. When `split_document` omits `output_dir`, the server creates an isolated run directory under `output-runs/` to prevent concurrent jobs from overwriting each other. Large review and index payloads are transferred through temporary files instead of command-line arguments.
 
 ## Workflow state safety
 
@@ -430,6 +453,7 @@ The pipeline now enforces this state sequence:
 ```text
 topic_review → boundary → boundary_complete → writing → verification
              → content_analysis → index → complete
+                                ↘ boundary_repair → writing → verification
 ```
 
 `write` is rejected when topic reviews are unresolved, the cursor has not reached the end of the IR, the boundary ranges contain a gap or overlap, or a confirmed topic change is missing from the plan. The writer no longer creates an implicit final chunk from unplanned remaining content.
@@ -557,10 +581,11 @@ The LLM must not invent boundaries. Committing an `element_id` not in `safe_cand
 1. `analysis-context` returns full chunk content and neighboring titles.
 2. The host agent writes a concise bilingual topic and practical study focus. `topic_en` becomes the final chunk filename slug.
 3. `commit-analysis` stores the result in `.split-session.json`, renames the chunk from the agent-selected topic, and updates `manifest.json`.
-4. Chunks marked `needs_review` appear in `semantic-review-report.json` and block final index commit until the boundary/coherence issue is resolved.
-5. **Every `analysis-context` or `get_chunk` call is tracked.** The agent must read all chunk files before `commit-index` is accepted.
-6. `index` returns context for the final index-writing pass, including `chunks_unread` so the agent knows which files remain.
-7. The host agent writes two complete Markdown indexes plus a generic `study-map.md`, then stores all three with `commit-index`.
+4. Chunks marked `needs_review` appear in `semantic-review-report.json`, move the workflow to `boundary_repair`, and block final index commit.
+5. The host requests `repair-context`, selects only internal safe cuts, and commits them with `repair-boundary`. Exact unchanged ranges retain their body and analysis; repaired ranges are regenerated and verified.
+6. **Every `analysis-context` or `get_chunk` call is tracked.** The agent must read all chunk files before `commit-index` is accepted.
+7. `index` returns context for the final index-writing pass, including `chunks_unread` so the agent knows which files remain.
+8. The host agent writes two complete Markdown indexes plus a generic `study-map.md`, then stores all three with `commit-index`.
 
 The study focus should answer: **What should the learner master in this session?**
 
@@ -663,7 +688,7 @@ PYTHONPATH=src python3 scripts/audit-golden-corpus.py \
   --output docs/baseline/golden-results.json
 ```
 
-The frozen corpus originated in phase zero. Current parser and verifier results are documented in [`docs/phase-3/phase-3.md`](docs/phase-3/phase-3.md).
+The frozen corpus originated in phase zero. Current repair-loop and MCP process-safety results are documented in [`docs/phase-4/phase-4.md`](docs/phase-4/phase-4.md).
 
 Run the MCP server directly (waits for stdio MCP protocol messages):
 
