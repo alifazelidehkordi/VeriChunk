@@ -13,7 +13,9 @@ OutputFormat = Literal["markdown", "pdf", "both"]
 class SplitConfig:
     min_pages: int = 5
     max_pages: int = 10
-    boundary_window_pages: int = 15
+    hard_max_pages: int = 13
+    topic_change_min_votes: int = 2
+    boundary_window_pages: int = 10
     boundary_window_extension_pages: int = 10
     words_per_page: int = 400
     image_extraction: bool = True

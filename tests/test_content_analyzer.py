@@ -77,6 +77,8 @@ def test_get_chunk_analysis_context_includes_section_headings(tmp_path: Path):
     ctx = get_chunk_analysis_context(tmp_path, 1)
     assert ctx["section_headings"] == ["RECURSIVE TREE TRAVERSAL"]
     assert ctx["provisional_topic"] == "RECURSIVE TREE TRAVERSAL"
+    session = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
+    assert session["chunks_read"] == [1]
 
 
 def test_commit_chunk_analysis_rejects_sentence_topic(tmp_path: Path):

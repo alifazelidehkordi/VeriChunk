@@ -7,7 +7,12 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from doc_splitter.boundary.planner import SplitSession, load_session, save_session
+from doc_splitter.boundary.planner import (
+    SplitSession,
+    load_session,
+    record_chunk_read,
+    save_session,
+)
 from doc_splitter.ir.serialize import load_ir, save_json
 from doc_splitter.naming import slugify
 from doc_splitter.section_titles import (
@@ -222,6 +227,8 @@ def get_chunk_analysis_context(
     if chunk is None:
         raise ValueError(f"Chunk {chunk_id} not found in manifest")
 
+    # Analysis reads the complete chunk, so it satisfies the index read gate too.
+    record_chunk_read(output_dir, chunk_id)
     content = read_chunk_content(output_dir, chunk)
 
     ir = load_ir(output_dir / "ir.json")

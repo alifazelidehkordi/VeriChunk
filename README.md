@@ -145,6 +145,18 @@ doc-splitter run \
 
 This parses the document, writes `ir.json`, creates `.split-session.json`, and prints the first boundary decision context.
 
+Before committing boundaries, create independent topic-change tasks and give
+the returned batches to separate host agents concurrently. Collect their votes
+and submit them together; two `split` votes make the proposed safe cut a hard
+boundary.
+
+```bash
+doc-splitter topic-review-context --out ./output/book --workers 4
+doc-splitter commit-topic-reviews \
+  --out ./output/book \
+  --reviews '[{"review_id":"topic-change:el-042","reviewer_id":"agent-a","decision":"split","reason":"A new independent topic begins after this completed discussion."},{"review_id":"topic-change:el-042","reviewer_id":"agent-b","decision":"split","reason":"The following material has a separate learning objective and should start a new session."}]'
+```
+
 Repeat the boundary loop until the context reports `status: "complete"`:
 
 ```bash
@@ -177,13 +189,14 @@ If the concept continues beyond the current window:
 doc-splitter commit-boundary \
   --out ./output/book \
   --action extend \
+  --allow-oversize \
   --reason "The same mechanism continues into the next example."
 ```
 
 After boundaries are complete, write and verify chunks:
 
 ```bash
-doc-splitter write --out ./output/book
+doc-splitter write --out ./output/book --output-format both
 ```
 
 Analyze each chunk:
@@ -213,7 +226,8 @@ doc-splitter index --out ./output/book
 doc-splitter commit-index \
   --out ./output/book \
   --fa-file ./agent-written-study-index-fa.md \
-  --en-file ./agent-written-study-index-en.md
+  --en-file ./agent-written-study-index-en.md \
+  --map-file ./agent-written-study-map.md
 ```
 
 ### PDF-native chunks
@@ -233,10 +247,10 @@ After `npm install`, register the MCP server with your host CLI (replace the pat
 ```bash
 REPO=/absolute/path/to/ducsplit
 
-claude mcp add doc-splitter -s user -- node "$REPO/server.js"
-codex mcp add doc-splitter -- node "$REPO/server.js"
-grok mcp add doc-splitter -s user -- node "$REPO/server.js"
-opencode mcp add doc-splitter -- node "$REPO/server.js"
+claude mcp add doc-splitter -s user -- env DOC_SPLITTER_PYTHON="$REPO/.venv/bin/python3" node "$REPO/server.js"
+codex mcp add doc-splitter -- env DOC_SPLITTER_PYTHON="$REPO/.venv/bin/python3" node "$REPO/server.js"
+grok mcp add doc-splitter -s user -- env DOC_SPLITTER_PYTHON="$REPO/.venv/bin/python3" node "$REPO/server.js"
+opencode mcp add doc-splitter -- env DOC_SPLITTER_PYTHON="$REPO/.venv/bin/python3" node "$REPO/server.js"
 ```
 
 Or use the helper script:
@@ -265,6 +279,8 @@ Then ask your agent:
 
 > Use the `doc-splitter` MCP tools to split `book.pdf` into 5–10 page conceptual Markdown chunks under `output/book`. Choose only safe boundary candidates, write the chunks, verify integrity, analyze every chunk in Persian and English, then author and commit the study indexes.
 
+The host AI agent must drive the MCP workflow. `ducsplit` does not call an LLM API by itself; the connected AI CLI reads each boundary or analysis context and decides what to commit.
+
 ## CLI Reference
 
 ### Commands
@@ -275,13 +291,15 @@ Then ask your agent:
 | `doc-splitter parse` | Parse only and write `ir.json`; useful for debugging parser output. |
 | `doc-splitter boundary-context` | Print the current content window, instructions, and safe cut candidates. |
 | `doc-splitter commit-boundary` | Commit a `cut` or `extend` decision. |
+| `doc-splitter topic-review-context` | Build independent topic-change tasks for parallel host-agent review. |
+| `doc-splitter commit-topic-reviews` | Record collected topic-change review votes. |
 | `doc-splitter write` | Write chunks and run verification. |
 | `doc-splitter verify` | Re-run verification against existing chunks and manifest. |
 | `doc-splitter get-chunk` | Read one chunk's content by numeric ID. |
 | `doc-splitter analysis-context` | Print full chunk content and analysis instructions. |
 | `doc-splitter commit-analysis` | Store bilingual topic, study focus, coherence, and reason for one chunk. |
-| `doc-splitter index` | Return context for agent-authored `study-index-fa.md` and `study-index-en.md`. |
-| `doc-splitter commit-index` | Store final Persian and English indexes written by the host agent. |
+| `doc-splitter index` | Return context for agent-authored bilingual indexes and `study-map.md`. |
+| `doc-splitter commit-index` | Store Persian, English, and document-level study-map indexes. |
 
 ### Common Options
 
@@ -291,7 +309,7 @@ Available on `run`, `parse`, `boundary-context`, `commit-boundary`, `write`, `ve
 |---|---:|---|
 | `--out PATH` | `output` | Output/session directory. |
 | `--min-pages N` | `5` | Target minimum chunk size (converted to words via `words_per_page`). |
-| `--max-pages N` | `10` | Target maximum chunk size; guidance for the host agent. |
+| `--max-pages N` | `10` | Maximum chunk size; larger windows require explicit `--allow-oversize`. |
 | `--reading-speed-wpm N` | `80` | Study reading-speed estimate (wpm) for index time calculations. Use 80–100 for technical/medical content, 150–200 for general reading. |
 | `--output-format markdown\|pdf\|both` | `markdown` | Chunk output format. PDF output requires PDF input. |
 | `--overlap-pages N` | `1` | Extra neighboring pages around PDF boundary pages. |
@@ -323,6 +341,8 @@ Returns JSON with `status`, `chunk_number`, `content_window`, `safe_candidates`,
 | `--action cut\|extend` | yes | `cut` commits a boundary; `extend` expands the decision window. |
 | `--element-id ID` | for `cut` | Safe candidate element ID. |
 | `--reason TEXT` | no | Human-readable rationale stored for auditability. |
+| `--allow-oversize` | for `extend` | Explicitly allow a concept to exceed `--max-pages`. |
+| `--allow-topic-merge` | for `cut` | Override a confirmed topic-change boundary with a specific reason. |
 
 ### `write` / `verify`
 
@@ -347,7 +367,7 @@ Requires every chunk to have committed content analysis, including both study-fo
 
 ### `commit-index`
 
-Stores the final `study-index-fa.md` and `study-index-en.md` bodies authored by the host agent. The command validates that every chunk file is referenced.
+Stores `study-index-fa.md`, `study-index-en.md`, and `study-map.md` authored by the host agent. The map is a generic topic map, dependency-aware study order, and complete session directory. Every artifact must reference every chunk.
 
 ## MCP Tools
 
@@ -355,14 +375,16 @@ Stores the final `study-index-fa.md` and `study-index-en.md` bodies authored by 
 |---|---|---:|---|
 | `split_document` | `file_path`, optional `min_pages`, `max_pages`, `output_dir`, `output_format`, `overlap_pages` | yes | Parses a PDF/DOCX and starts the boundary session. |
 | `get_boundary_context` | optional `output_dir` | no | Returns the current content window and safe cut candidates. |
-| `commit_boundary` | `action`, optional `element_id`, `reason`, `output_dir` | yes | Commits a boundary cut or extends the window. |
-| `write_chunks` | optional `output_dir` | yes | Writes chunk files and runs verification. |
+| `commit_boundary` | `action`, optional `element_id`, `reason`, `allow_oversize`, `output_dir` | yes | Commits a boundary cut or explicitly extends beyond the target. |
+| `get_topic_change_review_batch` | optional `output_dir`, `workers` | no | Returns duplicated topic-change tasks for independent parallel review. |
+| `commit_topic_change_reviews` | `reviews`, optional `output_dir` | yes | Stores review votes; two matching `split` votes create a hard boundary. |
+| `write_chunks` | `output_format`, optional `output_dir`, `overlap_pages` | yes | Requires an explicit Markdown, PDF, or both choice, then writes chunks and runs verification. |
 | `get_chunk` | `chunk_id`, optional `output_dir` | no | Reads generated chunk content. |
 | `verify_integrity` | optional `output_dir` | no | Re-runs verification. |
 | `get_chunk_analysis_context` | `chunk_id`, optional `output_dir` | no | Returns full chunk content for analysis. |
 | `commit_chunk_analysis` | `chunk_id`, `topic_fa`, `topic_en`, `study_focus_fa`, `study_focus_en`, `coherence`, optional `reason`, `output_dir` | yes | Stores bilingual chunk analysis. |
 | `get_study_index_context` | optional `output_dir`, `reading_speed_wpm` | no | Returns context for agent-authored Persian and English study indexes. |
-| `commit_study_index` | `index_fa`, `index_en`, optional `output_dir` | yes | Stores final Persian and English study indexes written by the host agent. |
+| `commit_study_index` | `index_fa`, `index_en`, `study_map`, optional `output_dir` | yes | Stores final bilingual indexes and a generic document-level study map. |
 
 The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`.
 
@@ -374,7 +396,8 @@ The MCP server is a thin Node.js wrapper around the Python CLI. It uses `DOC_SPL
 |---|---|---:|---|
 | Output directory | `--out` | `output` | Session state, IR, chunks, reports, indexes. |
 | Minimum pages | `--min-pages` | `5` | Filters early safe candidates. |
-| Maximum pages | `--max-pages` | `10` | Target guidance for the host agent. |
+| Maximum pages | `--max-pages` | `10` | Enforced unless an extension explicitly sets `allow_oversize`. |
+| Hard maximum pages | internal | `13` | Never exceeded, including an explicit extension. |
 | Output format | `--output-format` | `markdown` | `markdown`, `pdf`, or `both`. |
 | Boundary overlap | `--overlap-pages` | `1` | PDF outputs only. |
 | Reading speed | `--reading-speed-wpm` | `80` | Index time estimates; 80 wpm for technical/medical study, 150+ for general content. |
@@ -385,7 +408,7 @@ Defined in `src/doc_splitter/config.py`. Not all have CLI flags yet.
 
 | Setting | Default | Purpose |
 |---|---:|---|
-| `boundary_window_pages` | `15` | Initial content window shown to the host agent. |
+| `boundary_window_pages` | `10` | Initial content window shown to the host agent. |
 | `boundary_window_extension_pages` | `10` | Pages added when the host chooses `extend`. |
 | `words_per_page` | `400` | Converts page targets into word-count windows. |
 | `image_extraction` | `true` | Extracts and preserves image references. |
@@ -446,7 +469,8 @@ Each agent-authored `study-index-*.md` should include:
 2. It computes a window starting at the current cursor.
 3. It finds safe cut candidates after complete headings, paragraphs, lists, or tables.
 4. The host agent reads the content window and candidate list.
-5. The host agent chooses `cut` with an allowed `element_id`, or `extend` if the concept is incomplete.
+5. The host runs the topic-change review batches concurrently and commits the collected votes.
+6. The host agent chooses `cut` with an allowed `element_id`; confirmed topic changes cannot be crossed without an explicit topic-merge override.
 6. `ducsplit` validates the decision and moves the cursor.
 7. The loop continues until the document is fully covered.
 
@@ -478,9 +502,9 @@ The LLM must not invent boundaries. Committing an `element_id` not in `safe_cand
 2. The host agent writes a concise bilingual topic and practical study focus. `topic_en` becomes the final chunk filename slug.
 3. `commit-analysis` stores the result in `.split-session.json`, renames the chunk from the agent-selected topic, and updates `manifest.json`.
 4. Chunks marked `needs_review` appear in `semantic-review-report.json` and block final index commit until the boundary/coherence issue is resolved.
-5. **Every `get_chunk` call is tracked.** The agent must read all chunk files before `commit-index` is accepted.
+5. **Every `analysis-context` or `get_chunk` call is tracked.** The agent must read all chunk files before `commit-index` is accepted.
 6. `index` returns context for the final index-writing pass, including `chunks_unread` so the agent knows which files remain.
-7. The host agent writes both complete Markdown indexes and stores them with `commit-index`.
+7. The host agent writes two complete Markdown indexes plus a generic `study-map.md`, then stores all three with `commit-index`.
 
 The study focus should answer: **What should the learner master in this session?**
 
@@ -519,7 +543,7 @@ For PDF output, conceptual chunks are decided by element boundaries, but written
 - **DOCX page numbers** — estimated from word count; DOCX has no stable rendered page numbers.
 - **Non-Latin filenames** — semantic slugs are ASCII-folded; fallback is `section-N`.
 - **Very short documents** — may produce fewer or smaller chunks than the 5–10 page target.
-- **Very long concepts** — the host agent should choose `extend` until a coherent cut appears.
+- **Very long concepts** — the host agent must explicitly set `allow_oversize` when extending beyond the configured maximum, and no chunk can exceed 13 pages.
 - **Tables and lists** — treated atomically; the tool avoids cutting through them.
 - **OpenDataLoader failures** — parsing continues with `pymupdf4llm`; recorded in reconciliation notes.
 - **PDF boundary precision** — PDF chunks are page-level extracts, not element-level visual crops.
@@ -536,7 +560,7 @@ For PDF output, conceptual chunks are decided by element boundaries, but written
 | Verification fails (word-count mismatch) | Parser and written chunks diverged. | Inspect Markdown around tables/images; file an issue with sample input. |
 | `PDF output is only supported for PDF inputs` | `--output-format pdf` or `both` with DOCX. | Use `--output-format markdown` for DOCX. |
 | `Missing content analyses` during `index` | Not every chunk has committed analysis. | Run `analysis-context` and `commit-analysis` for each chunk. |
-| `Chunk files not yet read by the agent` during `commit-index` | Index committed without reading all chunk files via `get_chunk`. | Call `get_chunk` for every unread chunk ID listed in the error; the CLI tracks reads automatically. |
+| `Chunk files not yet read by the agent` during `commit-index` | Index committed without reading all chunk files. | Call `analysis-context` or `get_chunk` for every unread chunk ID listed in the error; both record reads. |
 | `Boundary reason must be a conceptual decision` | Reason contains `auto-cut` or similar auto-generated pattern. | Write a real conceptual reason explaining where the topic ends and why. |
 | `auto from section_headings is not acceptable` | Analysis reason is auto-generated. | Read the chunk and provide your own coherence assessment. |
 | `auto-generated study-focus template` in index | Index contains template like `Study X: core definitions, mechanisms`. | Write unique educational study focus for each session. |

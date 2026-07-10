@@ -7,7 +7,13 @@ import json
 import sys
 from pathlib import Path
 
-from doc_splitter.boundary.planner import commit_boundary, get_boundary_context, load_session, record_chunk_read
+from doc_splitter.boundary.planner import (
+    commit_boundary,
+    commit_topic_change_reviews,
+    get_boundary_context,
+    load_session,
+    record_chunk_read,
+)
 from doc_splitter.config import SplitConfig, config_from_dict
 from doc_splitter.content.analyzer import (
     commit_chunk_analysis,
@@ -23,11 +29,14 @@ from doc_splitter.orchestrator import (
     run_write_and_verify,
 )
 from doc_splitter.verifier import verify_output
+from doc_splitter.topic_reviews import build_topic_change_review_batch
 
 _SESSION_RESTORE_COMMANDS = frozenset(
     {
         "boundary-context",
         "commit-boundary",
+        "topic-review-context",
+        "commit-topic-reviews",
         "write",
         "verify",
         "index",
@@ -143,6 +152,35 @@ def cmd_commit_boundary(args: argparse.Namespace) -> int:
         action=args.action,
         element_id=args.element_id,
         reason=args.reason,
+        allow_oversize=args.allow_oversize,
+        allow_topic_merge=args.allow_topic_merge,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_topic_review_context(args: argparse.Namespace) -> int:
+    config = _resolve_config(args)
+    ir = load_ir(config.output_dir / "ir.json")
+    batch = build_topic_change_review_batch(ir, config, args.workers)
+    print(json.dumps(batch, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_commit_topic_reviews(args: argparse.Namespace) -> int:
+    config = _resolve_config(args)
+    try:
+        reviews = json.loads(args.reviews)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"--reviews must be a JSON array: {exc.msg}") from exc
+    if not isinstance(reviews, list):
+        raise ValueError("--reviews must be a JSON array")
+    ir = load_ir(config.output_dir / "ir.json")
+    result = commit_topic_change_reviews(
+        ir,
+        load_session(config.output_dir),
+        config,
+        reviews,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -230,12 +268,23 @@ def _read_text_arg(value: str | None, file_value: Path | None, field: str) -> st
 def cmd_commit_index(args: argparse.Namespace) -> int:
     index_fa = _read_text_arg(args.fa, args.fa_file, "fa")
     index_en = _read_text_arg(args.en, args.en_file, "en")
-    fa, en = commit_study_indexes(
+    study_map = _read_text_arg(args.map, args.map_file, "map")
+    fa, en, study_map_path = commit_study_indexes(
         args.output_dir,
         index_fa=index_fa,
         index_en=index_en,
+        study_map=study_map,
     )
-    print(json.dumps({"study_index_fa": str(fa), "study_index_en": str(en)}, indent=2))
+    print(
+        json.dumps(
+            {
+                "study_index_fa": str(fa),
+                "study_index_en": str(en),
+                "study_map": str(study_map_path),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -261,8 +310,34 @@ def build_parser() -> argparse.ArgumentParser:
     p_cb.add_argument("--action", choices=["cut", "extend"], required=True)
     p_cb.add_argument("--element-id", default=None)
     p_cb.add_argument("--reason", default="")
+    p_cb.add_argument(
+        "--allow-oversize",
+        action="store_true",
+        help="Allow an explicit extension beyond --max-pages for an inseparable concept.",
+    )
+    p_cb.add_argument(
+        "--allow-topic-merge",
+        action="store_true",
+        help="Allow a cut to cross a confirmed topic change; use only with a specific reason.",
+    )
     _add_config_args(p_cb)
     p_cb.set_defaults(func=cmd_commit_boundary)
+
+    p_trc = sub.add_parser(
+        "topic-review-context",
+        help="Build independent topic-change tasks for parallel host-agent review",
+    )
+    p_trc.add_argument("--workers", type=int, default=4)
+    _add_config_args(p_trc)
+    p_trc.set_defaults(func=cmd_topic_review_context)
+
+    p_ctr = sub.add_parser(
+        "commit-topic-reviews",
+        help="Commit parallel topic-change review votes as JSON",
+    )
+    p_ctr.add_argument("--reviews", required=True)
+    _add_config_args(p_ctr)
+    p_ctr.set_defaults(func=cmd_commit_topic_reviews)
 
     p_write = sub.add_parser("write", help="Write chunks and verify")
     _add_config_args(p_write)
@@ -300,8 +375,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_ci = sub.add_parser("commit-index", help="Commit agent-authored study indexes")
     p_ci.add_argument("--fa", default=None, help="Persian index Markdown body")
     p_ci.add_argument("--en", default=None, help="English index Markdown body")
+    p_ci.add_argument("--map", default=None, help="Document-level study map Markdown body")
     p_ci.add_argument("--fa-file", type=Path, default=None, help="Path to Persian index Markdown")
     p_ci.add_argument("--en-file", type=Path, default=None, help="Path to English index Markdown")
+    p_ci.add_argument("--map-file", type=Path, default=None, help="Path to study map Markdown")
     p_ci.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
     p_ci.set_defaults(func=cmd_commit_index)
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +10,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const PYTHON = process.env.DOC_SPLITTER_PYTHON || "python3";
+const VENV_PYTHON = path.join(ROOT, ".venv", "bin", "python3");
+const PYTHON = process.env.DOC_SPLITTER_PYTHON || (existsSync(VENV_PYTHON) ? VENV_PYTHON : "python3");
+const DEBUG = process.env.DOC_SPLITTER_MCP_DEBUG === "1";
+
+function debug(message) {
+  if (DEBUG) process.stderr.write(`[doc-splitter] ${message}\n`);
+}
 
 function runCli(args) {
   return new Promise((resolve, reject) => {
@@ -42,6 +49,8 @@ function parseJsonOutput(output) {
 }
 
 const server = new McpServer({ name: "doc-splitter", version: "0.1.0" });
+server.server.onerror = (error) => debug(`server error: ${error?.stack || error}`);
+server.server.onclose = () => debug("server closed");
 
 const outDir = z.string().optional().describe("Output directory (default: output)");
 const minPages = z.number().int().optional();
@@ -103,12 +112,60 @@ server.registerTool(
       action: z.enum(["cut", "extend"]),
       element_id: z.string().optional(),
       reason: z.string().optional(),
+      allow_oversize: z.boolean().optional(),
+      allow_topic_merge: z.boolean().optional(),
     },
     annotations: { readOnlyHint: false, openWorldHint: false },
   },
-  async ({ output_dir, action, element_id, reason }) => {
+  async ({ output_dir, action, element_id, reason, allow_oversize, allow_topic_merge }) => {
     const args = ["commit-boundary", "--action", action, "--reason", reason || ""];
     if (element_id) args.push("--element-id", element_id);
+    if (allow_oversize) args.push("--allow-oversize");
+    if (allow_topic_merge) args.push("--allow-topic-merge");
+    if (output_dir) args.push("--out", output_dir);
+    const out = await runCli(args);
+    return { content: [{ type: "text", text: out }] };
+  },
+);
+
+server.registerTool(
+  "get_topic_change_review_batch",
+  {
+    title: "Get parallel topic-change review tasks",
+    description: "Return independent topic-transition tasks for concurrent subagents. Collect all votes, then submit them together.",
+    inputSchema: {
+      output_dir: outDir,
+      workers: z.number().int().min(1).max(16).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async ({ output_dir, workers }) => {
+    const args = ["topic-review-context"];
+    if (output_dir) args.push("--out", output_dir);
+    if (workers) args.push("--workers", String(workers));
+    const out = await runCli(args);
+    return { content: [{ type: "text", text: out }] };
+  },
+);
+
+server.registerTool(
+  "commit_topic_change_reviews",
+  {
+    title: "Commit parallel topic-change review votes",
+    description: "Persist collected independent votes. Two matching votes turn a confirmed topic change into a hard boundary.",
+    inputSchema: {
+      output_dir: outDir,
+      reviews: z.array(z.object({
+        review_id: z.string(),
+        reviewer_id: z.string(),
+        decision: z.enum(["split", "merge"]),
+        reason: z.string(),
+      })).min(1),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false },
+  },
+  async ({ output_dir, reviews }) => {
+    const args = ["commit-topic-reviews", "--reviews", JSON.stringify(reviews)];
     if (output_dir) args.push("--out", output_dir);
     const out = await runCli(args);
     return { content: [{ type: "text", text: out }] };
@@ -119,13 +176,19 @@ server.registerTool(
   "write_chunks",
   {
     title: "Write chunks",
-    description: "Write chunk markdown files and run verification after boundaries are complete.",
-    inputSchema: { output_dir: outDir },
+    description: "Write chunks and run verification. Ask the user which format they want, then provide output_format explicitly.",
+    inputSchema: {
+      output_dir: outDir,
+      output_format: z.enum(["markdown", "pdf", "both"]),
+      overlap_pages: overlapPages,
+    },
     annotations: { readOnlyHint: false, openWorldHint: false },
   },
-  async ({ output_dir }) => {
+  async ({ output_dir, output_format, overlap_pages }) => {
     const args = ["write"];
     if (output_dir) args.push("--out", output_dir);
+    args.push("--output-format", output_format);
+    if (overlap_pages !== undefined) args.push("--overlap-pages", String(overlap_pages));
     const out = await runCli(args);
     return { content: [{ type: "text", text: out }] };
   },
@@ -248,15 +311,26 @@ server.registerTool(
       output_dir: outDir,
       index_fa: z.string(),
       index_en: z.string(),
+      study_map: z.string(),
     },
     annotations: { readOnlyHint: false, openWorldHint: false },
   },
-  async ({ output_dir, index_fa, index_en }) => {
-    const args = ["commit-index", "--fa", index_fa, "--en", index_en];
+  async ({ output_dir, index_fa, index_en, study_map }) => {
+    const args = ["commit-index", "--fa", index_fa, "--en", index_en, "--map", study_map];
     if (output_dir) args.push("--out", output_dir);
     const out = await runCli(args);
     return { content: [{ type: "text", text: out }] };
   },
 );
 
+debug(`starting MCP server with python ${PYTHON}`);
 await server.connect(new StdioServerTransport());
+debug("MCP server connected to stdio");
+process.stdin.resume();
+const keepAlive = setInterval(() => {}, 1 << 30);
+const shutdown = async () => {
+  clearInterval(keepAlive);
+  await server.close();
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

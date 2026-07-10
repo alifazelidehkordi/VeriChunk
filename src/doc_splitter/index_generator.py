@@ -139,6 +139,7 @@ def get_index_context(output_dir: Path, config: SplitConfig) -> dict[str, Any]:
         "output_files": {
             "fa": str(output_dir / "study-index-fa.md"),
             "en": str(output_dir / "study-index-en.md"),
+            "map": str(output_dir / "study-map.md"),
         },
         "chunks": chunks,
         "chunks_read": session.chunks_read,
@@ -175,6 +176,23 @@ def _validate_agent_index(
     _validate_index_quality(text, lang=lang, manifest=manifest)
 
 
+_STUDY_MAP_SECTIONS = (
+    "## Topic Map",
+    "## Suggested Study Order",
+    "## Session Directory",
+)
+
+
+def _validate_study_map(text: str, manifest: dict[str, Any]) -> None:
+    """Require a reusable document-level map, not a domain-specific template."""
+    _validate_agent_index(text, lang="Study map", manifest=manifest)
+    missing_sections = [section for section in _STUDY_MAP_SECTIONS if section not in text]
+    if missing_sections:
+        raise ValueError(
+            "Study map is missing required sections: " + ", ".join(missing_sections)
+        )
+
+
 def _validate_index_quality(
     text: str,
     *,
@@ -196,18 +214,22 @@ def commit_study_indexes(
     *,
     index_fa: str,
     index_en: str,
-) -> tuple[Path, Path]:
+    study_map: str,
+) -> tuple[Path, Path, Path]:
     manifest = _load_manifest(output_dir)
     session = load_session(output_dir)
     _validate_ready_for_index(manifest, session)
     _validate_agent_index(index_fa, lang="Persian", manifest=manifest)
     _validate_agent_index(index_en, lang="English", manifest=manifest)
+    _validate_study_map(study_map, manifest)
 
     fa_path = output_dir / "study-index-fa.md"
     en_path = output_dir / "study-index-en.md"
+    map_path = output_dir / "study-map.md"
     fa_path.write_text(index_fa.rstrip() + "\n", encoding="utf-8")
     en_path.write_text(index_en.rstrip() + "\n", encoding="utf-8")
+    map_path.write_text(study_map.rstrip() + "\n", encoding="utf-8")
 
     session.stage = "complete"
     save_session(session, output_dir)
-    return fa_path, en_path
+    return fa_path, en_path, map_path

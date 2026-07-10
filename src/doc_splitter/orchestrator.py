@@ -14,7 +14,6 @@ from doc_splitter.format_detector import InputFormat, detect_format
 from doc_splitter.index_generator import get_index_context
 from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import save_ir
-from doc_splitter.section_titles import validate_analysis
 from doc_splitter.parsers import parse_docx, parse_pdf
 from doc_splitter.verifier import verify_output
 from doc_splitter.writer import write_chunks
@@ -45,6 +44,7 @@ def init_session(input_path: Path, config: SplitConfig) -> SplitSession:
         source_file=input_path.name,
         output_dir=str(config.output_dir.resolve()),
         config=config_to_dict(config),
+        window_pages=min(config.max_pages, config.hard_max_pages),
         stage="boundary",
     )
     save_session(session, config.output_dir)
@@ -83,37 +83,8 @@ def run_write_and_verify(ir: DocumentIR, config: SplitConfig) -> dict:
 
 def run_index_context(config: SplitConfig) -> dict:
     session = load_session(config.output_dir)
-    missing = []
-    manifest_chunks = (config.output_dir / "manifest.json").read_text(encoding="utf-8")
-    import json
-
-    total = json.loads(manifest_chunks).get("total_chunks", 0)
-    for i in range(1, total + 1):
-        analysis = session.chunk_analyses.get(str(i))
-        if not analysis:
-            missing.append(i)
-            continue
-        if not analysis.get("study_focus_fa") or not analysis.get("study_focus_en"):
-            missing.append(i)
-            continue
-        try:
-            validate_analysis(
-                topic_fa=analysis["topic_fa"],
-                topic_en=analysis["topic_en"],
-                study_focus_fa=analysis["study_focus_fa"],
-                study_focus_en=analysis["study_focus_en"],
-            )
-        except ValueError as exc:
-            raise PipelineError(
-                f"Chunk {i} has invalid content analysis: {exc}. "
-                "Re-run commit_chunk_analysis with a short section title and educational study_focus."
-            ) from exc
-    if missing:
-        raise PipelineError(
-            f"Missing content analyses (including study_focus) for chunks: {missing}. "
-            "Use get_chunk_analysis_context / commit_chunk_analysis first."
-        )
-
+    # Validate every index prerequisite before persisting the index stage.
+    ctx = get_index_context(config.output_dir, config)
     session.stage = "index"
     save_session(session, config.output_dir)
-    return get_index_context(config.output_dir, config)
+    return ctx
