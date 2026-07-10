@@ -1,7 +1,7 @@
 {
   "name": "doc-splitter-mcp",
   "version": "0.5.0",
-  "description": "MCP server for the Document Splitter Agent",
+  "description": "MCP server for VeriChunk verified semantic document chunking",
   "type": "module",
   "private": true,
   "scripts": {
