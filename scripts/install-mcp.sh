@@ -16,10 +16,10 @@ register() {
 
 PYTHON="$REPO/.venv/bin/python3"
 
-register claude claude mcp add doc-splitter -s user -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
-register codex codex mcp add doc-splitter -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
-register grok grok mcp add doc-splitter -s user -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
-register opencode opencode mcp add doc-splitter -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
+register claude claude mcp add verichunk -s user -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
+register codex codex mcp add verichunk -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
+register grok grok mcp add verichunk -s user -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
+register opencode opencode mcp add verichunk -- env DOC_SPLITTER_PYTHON="$PYTHON" node "$REPO/server.js"
 
-echo "Done. Available MCP clients were configured with repository-local paths."
+echo "Done. Available MCP clients were configured with the VeriChunk server name."
 echo "For manual setup, copy $REPO/.mcp.json.example to .mcp.json and replace the placeholders."
