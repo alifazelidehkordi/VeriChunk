@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections import Counter
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -98,27 +98,19 @@ def _verify_markdown_file(
         expected_body = normalize_markdown_block(render_element(element))
         actual_body = normalize_markdown_block(item.body)
         if actual_body != expected_body:
-            errors.append(
-                f"{chunk_label}: rendered content mismatch for element {element.id}"
-            )
+            errors.append(f"{chunk_label}: rendered content mismatch for element {element.id}")
         actual_word_total += rendered_word_count(actual_body, element.type)
 
         if element.type == "image" and element.ref:
             image_path = output_dir / element.ref
             if not image_path.is_file():
-                errors.append(
-                    f"{chunk_label}: referenced image file is missing: {element.ref}"
-                )
+                errors.append(f"{chunk_label}: referenced image file is missing: {element.ref}")
             elif image_path.stat().st_size == 0:
-                errors.append(
-                    f"{chunk_label}: referenced image file is empty: {element.ref}"
-                )
+                errors.append(f"{chunk_label}: referenced image file is empty: {element.ref}")
             elif element.content_sha256:
                 actual_hash = hashlib.sha256(image_path.read_bytes()).hexdigest()
                 if actual_hash != element.content_sha256:
-                    errors.append(
-                        f"{chunk_label}: image content hash mismatch: {element.ref}"
-                    )
+                    errors.append(f"{chunk_label}: image content hash mismatch: {element.ref}")
 
     return actual_ids, actual_word_total
 
@@ -269,9 +261,7 @@ def verify_output(
                 continue
             chunk = raw_chunk
             chunk_label = f"Chunk {position}"
-            expected_elements = _chunk_expected_elements(
-                ir, chunk, chunk_label, errors
-            )
+            expected_elements = _chunk_expected_elements(ir, chunk, chunk_label, errors)
             planned_ids.extend(element.id for element in expected_elements)
 
             markdown_name = chunk.get("markdown_file")
@@ -313,11 +303,15 @@ def verify_output(
                         errors.append(f"Missing chunk file: {pdf_name}")
                     elif source_doc is not None and pymupdf is not None:
                         raw_pages = chunk.get("pdf_pages", chunk.get("source_pages", []))
-                        try:
-                            pdf_pages = [int(page) for page in raw_pages]
-                        except (TypeError, ValueError):
+                        if not isinstance(raw_pages, (list, tuple)):
                             errors.append(f"{chunk_label}: invalid pdf_pages")
                             pdf_pages = []
+                        else:
+                            try:
+                                pdf_pages = [int(page) for page in raw_pages]
+                            except (TypeError, ValueError):
+                                errors.append(f"{chunk_label}: invalid pdf_pages")
+                                pdf_pages = []
                         pdf_verified = _verify_pdf_file(
                             pdf_path,
                             source_doc,
@@ -343,20 +337,14 @@ def verify_output(
             source_doc.close()
 
     if planned_ids != expected_ids:
-        errors.append(
-            "Manifest chunk ranges do not cover IR elements exactly once in source order"
-        )
+        errors.append("Manifest chunk ranges do not cover IR elements exactly once in source order")
     if actual_ids != expected_ids:
-        errors.append(
-            "Verified chunk content does not preserve the complete source element order"
-        )
+        errors.append("Verified chunk content does not preserve the complete source element order")
 
     planned_counts = Counter(planned_ids)
     for element_id, count in planned_counts.items():
         if count != 1:
-            errors.append(
-                f"Element {element_id} appears in {count} manifest ranges (expected 1)"
-            )
+            errors.append(f"Element {element_id} appears in {count} manifest ranges (expected 1)")
 
     id_counts = Counter(actual_ids)
     for element_id, count in id_counts.items():
@@ -372,7 +360,9 @@ def verify_output(
     for element_id in sorted(extra):
         errors.append(f"Unknown element {element_id} found in verified chunk content")
 
-    word_method = "rendered_markdown" if output_format in {"markdown", "both"} else "pdf_page_identity"
+    word_method = (
+        "rendered_markdown" if output_format in {"markdown", "both"} else "pdf_page_identity"
+    )
     if output_format in {"markdown", "both"}:
         tolerance = config.word_count_tolerance(ir.meta.total_word_count)
         word_diff = abs(actual_word_total - ir.meta.total_word_count)

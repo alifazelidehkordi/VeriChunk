@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 from typing import Any
 
@@ -41,8 +41,12 @@ def _render_elements(ir: DocumentIR, start: int, end: int) -> str:
     return "\n\n".join(parts)
 
 
-def _queued_target(session: SplitSession, manifest: dict[str, Any], chunk_id: int) -> tuple[dict[str, Any], dict[str, Any]]:
-    chunk = next((item for item in manifest.get("chunks", []) if int(item.get("id", 0)) == chunk_id), None)
+def _queued_target(
+    session: SplitSession, manifest: dict[str, Any], chunk_id: int
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    chunk = next(
+        (item for item in manifest.get("chunks", []) if int(item.get("id", 0)) == chunk_id), None
+    )
     if chunk is None:
         raise ValueError(f"Chunk {chunk_id} not found in manifest")
     start = int(chunk.get("start_index", -1))
@@ -51,8 +55,7 @@ def _queued_target(session: SplitSession, manifest: dict[str, Any], chunk_id: in
         (
             item
             for item in session.repair_queue
-            if int(item.get("start_index", -2)) == start
-            and int(item.get("end_index", -2)) == end
+            if int(item.get("start_index", -2)) == start and int(item.get("end_index", -2)) == end
         ),
         None,
     )
@@ -80,8 +83,12 @@ def get_boundary_repair_context(output_dir: Path, chunk_id: int) -> dict[str, An
         if start <= candidate.boundary_index < end
     ]
     semantic_ids = {candidate.boundary_element_id for candidate in semantic}
-    previous = next((c for c in manifest.get("chunks", []) if int(c.get("id", 0)) == chunk_id - 1), None)
-    following = next((c for c in manifest.get("chunks", []) if int(c.get("id", 0)) == chunk_id + 1), None)
+    previous = next(
+        (c for c in manifest.get("chunks", []) if int(c.get("id", 0)) == chunk_id - 1), None
+    )
+    following = next(
+        (c for c in manifest.get("chunks", []) if int(c.get("id", 0)) == chunk_id + 1), None
+    )
 
     return {
         "status": "needs_agent_repair_decision",
@@ -99,7 +106,8 @@ def get_boundary_repair_context(output_dir: Path, chunk_id: int) -> dict[str, An
                     ir, int(previous.get("start_index", 0)), int(previous.get("end_index", 0))
                 ),
             }
-            if previous else None
+            if previous
+            else None
         ),
         "next_chunk": (
             {
@@ -110,7 +118,8 @@ def get_boundary_repair_context(output_dir: Path, chunk_id: int) -> dict[str, An
                     ir, int(following.get("start_index", 0)), int(following.get("end_index", 0))
                 ),
             }
-            if following else None
+            if following
+            else None
         ),
         "content": _render_elements(ir, start, end),
         "safe_cut_candidates": [
@@ -194,9 +203,7 @@ def commit_boundary_repair_plan(
             ir, next_start, new_end, structure.element_pages
         )
         page_count = (
-            end_page - start_page + 1
-            if start_page is not None and end_page is not None
-            else None
+            end_page - start_page + 1 if start_page is not None and end_page is not None else None
         )
         if page_count is not None and page_count > config.hard_max_pages:
             raise ValueError(
@@ -218,8 +225,7 @@ def commit_boundary_repair_plan(
                     else original.get("split_type", "conceptual")
                 ),
                 "continues_from_previous": (
-                    bool(original.get("continues_from_previous", False))
-                    if position == 0 else False
+                    bool(original.get("continues_from_previous", False)) if position == 0 else False
                 ),
                 "continues_to_next": (
                     bool(original.get("continues_to_next", False)) if is_last else False

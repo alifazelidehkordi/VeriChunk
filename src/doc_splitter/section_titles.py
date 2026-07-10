@@ -12,9 +12,7 @@ GENERIC_SKIP_TITLES = {
     "blank page",
 }
 
-SECTION_TITLE_RE = re.compile(
-    r"^[A-Z][A-Z0-9 ,–\-/&()']{11,}$"
-)
+SECTION_TITLE_RE = re.compile(r"^[A-Z][A-Z0-9 ,–\-/&()']{11,}$")
 TITLE_MARKUP_RE = re.compile(r"\*\*|__|</?u>|</?mark>")
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 BOLD_ONLY_RE = re.compile(r"^\*\*(.+)\*\*$")
@@ -285,7 +283,9 @@ def validate_analysis(
 
 _RE_AUTO_REASON = re.compile(r"^auto", re.IGNORECASE)
 _RE_AUTO_CUT = re.compile(r"auto-cut\s*~?\d*\s*words?", re.IGNORECASE)
-_RE_AUTO_HEADINGS = re.compile(r"auto\s+.*(?:section[_ ]?headings?|from\s+section|headings)", re.IGNORECASE)
+_RE_AUTO_HEADINGS = re.compile(
+    r"auto\s+.*(?:section[_ ]?headings?|from\s+section|headings)", re.IGNORECASE
+)
 _RE_EMPTY_PUNCT = re.compile(r"^[\s,;:.!?؟،]*$")
 
 
@@ -317,13 +317,16 @@ def validate_boundary_reason(reason: str) -> None:
 
 def validate_analysis_reason(reason: str) -> None:
     if not reason or not reason.strip():
-        raise ValueError(
-            "Analysis reason must not be empty. Explain your coherence judgment."
-        )
+        raise ValueError("Analysis reason must not be empty. Explain your coherence judgment.")
     r = reason.strip()
     if _RE_EMPTY_PUNCT.match(r):
         raise ValueError("Analysis reason must consist of actual words, not just punctuation.")
-    if _RE_AUTO_HEADINGS.match(r) or _RE_AUTO_CUT.match(r) or "auto from section" in r.lower() or "auto populated" in r.lower():
+    if (
+        _RE_AUTO_HEADINGS.match(r)
+        or _RE_AUTO_CUT.match(r)
+        or "auto from section" in r.lower()
+        or "auto populated" in r.lower()
+    ):
         raise ValueError(
             "Analysis reason must be written by the host agent. "
             "'auto from section_headings' is not acceptable — read the chunk and provide a real assessment."

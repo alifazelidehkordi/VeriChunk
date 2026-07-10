@@ -18,7 +18,5 @@ def parse_pdf(path: Path, config: SplitConfig, images_dir: Path | None = None) -
         if layouts:
             ir = reconcile_pdf_ir(ir, layouts)
     except Exception as exc:
-        ir.meta.reconciliation_notes.append(
-            f"OpenDataLoader skipped: {type(exc).__name__}: {exc}"
-        )
+        ir.meta.reconciliation_notes.append(f"OpenDataLoader skipped: {type(exc).__name__}: {exc}")
     return ir

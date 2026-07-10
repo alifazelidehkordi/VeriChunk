@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import hashlib
 import sys
 import types
+from pathlib import Path
 
 from doc_splitter.config import SplitConfig
 from doc_splitter.parsers.docx_parser import parse_docx
@@ -69,8 +69,7 @@ def test_pdf_pipeline_survives_unexpected_opendataloader_failure(tmp_path: Path,
 
     assert ir.elements
     assert any(
-        "OpenDataLoader skipped: ValueError" in note
-        for note in ir.meta.reconciliation_notes
+        "OpenDataLoader skipped: ValueError" in note for note in ir.meta.reconciliation_notes
     )
 
 

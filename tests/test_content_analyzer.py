@@ -50,7 +50,10 @@ def test_commit_chunk_analysis_stores_study_focus(tmp_path: Path):
 
     session = json.loads((tmp_path / ".split-session.json").read_text(encoding="utf-8"))
     analysis = session["chunk_analyses"]["1"]
-    assert analysis["study_focus_fa"] == "تمرکز آموزشی: مفاهیم کلیدی، مثال‌های اصلی و اهداف یادگیری این جلسه."
+    assert (
+        analysis["study_focus_fa"]
+        == "تمرکز آموزشی: مفاهیم کلیدی، مثال‌های اصلی و اهداف یادگیری این جلسه."
+    )
     assert analysis["study_focus_en"] == "Educational study focus in English with key concepts."
 
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))

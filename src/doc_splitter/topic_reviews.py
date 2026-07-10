@@ -161,7 +161,9 @@ def build_topic_change_review_batch(
                 }
             )
 
-    batches = [[] for _ in range(min(workers, len(tasks)))] if tasks else []
+    batches: list[list[dict[str, Any]]] = (
+        [[] for _ in range(min(workers, len(tasks)))] if tasks else []
+    )
     for index, task in enumerate(tasks):
         batches[index % len(batches)].append(task)
 

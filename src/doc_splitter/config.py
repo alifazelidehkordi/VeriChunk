@@ -50,7 +50,9 @@ class SplitConfig:
         if self.min_pages < 1:
             raise ValueError("min_pages must be at least 1")
         if self.hard_max_pages > ABSOLUTE_PAGE_CAP:
-            raise ValueError(f"hard_max_pages cannot exceed the absolute cap of {ABSOLUTE_PAGE_CAP}")
+            raise ValueError(
+                f"hard_max_pages cannot exceed the absolute cap of {ABSOLUTE_PAGE_CAP}"
+            )
         if not (self.min_pages <= self.max_pages <= self.soft_max_pages <= self.hard_max_pages):
             raise ValueError(
                 "Page policy must satisfy min_pages <= max_pages <= "
@@ -61,9 +63,7 @@ class SplitConfig:
         if self.topic_change_min_votes < 1:
             raise ValueError("topic_change_min_votes must be at least 1")
         if self.topic_change_reviewers < self.topic_change_min_votes:
-            raise ValueError(
-                "topic_change_reviewers cannot be smaller than topic_change_min_votes"
-            )
+            raise ValueError("topic_change_reviewers cannot be smaller than topic_change_min_votes")
         if self.continuity_min_reviewers < 1:
             raise ValueError("continuity_min_reviewers must be at least 1")
 

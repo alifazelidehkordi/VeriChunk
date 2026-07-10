@@ -42,10 +42,7 @@ def render_markdown_chunk(
         page_label = f"~{page_range.start_page}-{page_range.end_page}"
 
     if marked_section is None:
-        body_parts = [
-            render_marked_element(el)
-            for el in ir.elements[start_idx : end_idx + 1]
-        ]
+        body_parts = [render_marked_element(el) for el in ir.elements[start_idx : end_idx + 1]]
         body = "\n\n".join(body_parts)
         marked_section = f"{ELEMENTS_START}\n\n{body}\n\n{ELEMENTS_END}"
 

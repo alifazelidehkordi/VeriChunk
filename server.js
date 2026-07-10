@@ -10,12 +10,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { parseJsonOutput, runProcess } from "./mcp/cli-runner.js";
+import { buildReviewerArgs } from "./mcp/reviewer-args.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const VENV_PYTHON = path.join(ROOT, ".venv", "bin", "python3");
 const PYTHON = process.env.DOC_SPLITTER_PYTHON || (existsSync(VENV_PYTHON) ? VENV_PYTHON : "python3");
 const DEBUG = process.env.DOC_SPLITTER_MCP_DEBUG === "1";
-const AGENT_COMMAND = process.env.DOC_SPLITTER_AGENT_COMMAND || "";
 
 function debug(message) {
   if (DEBUG) process.stderr.write(`[doc-splitter] ${message}\n`);
@@ -58,7 +58,7 @@ async function withTempTextFiles(files, callback) {
   }
 }
 
-const server = new McpServer({ name: "doc-splitter", version: "0.4.0" });
+const server = new McpServer({ name: "doc-splitter", version: "0.5.0" });
 server.server.onerror = (error) => debug(`server error: ${error?.stack || error}`);
 server.server.onclose = () => debug("server closed");
 
@@ -167,32 +167,21 @@ server.registerTool(
   "run_parallel_topic_reviews",
   {
     title: "Run parallel topic-change reviewers",
-    description: "Execute the operator-configured JSON reviewer command concurrently. Requires DOC_SPLITTER_AGENT_COMMAND in the MCP server environment.",
+    description: "Execute command, OpenAI, or Anthropic reviewers concurrently. Provider API keys are read only from the MCP server environment.",
     inputSchema: {
       output_dir: outDir,
+      backend: z.enum(["command", "openai", "anthropic"]).optional(),
+      model: z.string().optional(),
       workers: z.number().int().min(1).max(16).optional(),
       timeout_seconds: z.number().positive().max(600).optional(),
       retries: z.number().int().min(0).max(5).optional(),
       max_output_bytes: z.number().int().min(1024).max(16 * 1024 * 1024).optional(),
+      max_output_tokens: z.number().int().min(128).max(8192).optional(),
     },
     annotations: { readOnlyHint: false, openWorldHint: true },
   },
-  async ({ output_dir, workers, timeout_seconds, retries, max_output_bytes }, extra) => {
-    if (!AGENT_COMMAND) {
-      throw new Error("DOC_SPLITTER_AGENT_COMMAND is not configured for this MCP server");
-    }
-    const args = [
-      "run-topic-reviews",
-      "--backend",
-      "command",
-      "--agent-command",
-      AGENT_COMMAND,
-    ];
-    if (output_dir) args.push("--out", output_dir);
-    if (workers) args.push("--workers", String(workers));
-    if (timeout_seconds) args.push("--timeout-seconds", String(timeout_seconds));
-    if (retries !== undefined) args.push("--retries", String(retries));
-    if (max_output_bytes !== undefined) args.push("--agent-max-output-bytes", String(max_output_bytes));
+  async (options, extra) => {
+    const args = buildReviewerArgs(options, process.env);
     const out = await runCli(args, { signal: extra?.signal });
     return { content: [{ type: "text", text: out }] };
   },

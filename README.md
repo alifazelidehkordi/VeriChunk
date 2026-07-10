@@ -40,7 +40,7 @@ Long study documents overwhelm AI assistants: they exceed context windows, trigg
 - Each chunk can be analyzed into bilingual Persian/English study metadata.
 - Final study indexes link to every session and include a practical **Study Focus** column.
 
-`ducsplit` does not bundle a provider-specific LLM SDK. Reviews can be supplied by the MCP host, or executed concurrently through the command-backend bridge; the core package supplies semantic candidate detection, constraints, persistence, writing, and verification.
+`ducsplit` can receive reviews from the MCP host, run an external JSON-in/JSON-out command bridge, or call OpenAI and Anthropic directly through optional SDK extras. API keys are read only from environment variables and are never written to session files or logs.
 
 ## Key Features
 
@@ -118,7 +118,7 @@ cd ducsplit
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install -e ".[dev]"
+pip install -e ".[dev,agents]"
 npm install
 
 java -version   # must succeed for full PDF reconciliation
@@ -171,7 +171,29 @@ doc-splitter run-topic-reviews \
   --agent-command './scripts/my-llm-reviewer'
 ```
 
-`--backend heuristic` exists only for deterministic offline testing and baseline runs; it is not a substitute for independent model review.
+Direct OpenAI reviews:
+
+```bash
+export OPENAI_API_KEY="..."
+export DOC_SPLITTER_OPENAI_MODEL="your-review-model"
+doc-splitter run-topic-reviews \
+  --out ./output/book \
+  --workers 6 \
+  --backend openai
+```
+
+Direct Anthropic reviews:
+
+```bash
+export ANTHROPIC_API_KEY="..."
+export DOC_SPLITTER_ANTHROPIC_MODEL="your-review-model"
+doc-splitter run-topic-reviews \
+  --out ./output/book \
+  --workers 6 \
+  --backend anthropic
+```
+
+Install only the provider you use with `pip install -e ".[openai]"` or `pip install -e ".[anthropic]"`. `--backend heuristic` exists only for deterministic offline testing and baseline runs; it is not a substitute for independent model review.
 
 Repeat the boundary loop until the context reports `status: "complete"`:
 
@@ -314,7 +336,9 @@ For project-level MCP configuration, use `.mcp.json`:
       "args": ["/absolute/path/to/ducsplit/server.js"],
       "env": {
         "DOC_SPLITTER_PYTHON": "/absolute/path/to/ducsplit/.venv/bin/python3",
-        "DOC_SPLITTER_AGENT_COMMAND": "/absolute/path/to/your-json-reviewer"
+        "DOC_SPLITTER_REVIEW_BACKEND": "openai",
+        "DOC_SPLITTER_OPENAI_MODEL": "your-review-model",
+        "OPENAI_API_KEY": "set-this-through-your-secret-manager"
       }
     }
   }
@@ -325,7 +349,7 @@ Then ask your agent:
 
 > Use the `doc-splitter` MCP tools to split `book.pdf` into semantic Markdown chunks, preferring 5–12 pages, allowing page 13 only for concept completion, and never exceeding 20 pages under `output/book`. Choose only safe boundary candidates, write the chunks, verify integrity, analyze every chunk in Persian and English, then author and commit the study indexes.
 
-The MCP workflow remains host-driven. The optional CLI command backend can invoke an external reviewer process, but the core package does not hard-code or directly configure any LLM provider API.
+The MCP workflow remains host-driven. `run_parallel_topic_reviews` supports `command`, `openai`, and `anthropic`. Provider keys stay in the MCP server environment; tool inputs may select a backend and model but never carry API keys.
 
 ## CLI Reference
 
@@ -339,7 +363,7 @@ The MCP workflow remains host-driven. The optional CLI command backend can invok
 | `doc-splitter commit-boundary` | Commit a `cut` or `extend` decision. |
 | `doc-splitter topic-review-context` | Build independent topic-change tasks for parallel host-agent review. |
 | `doc-splitter commit-topic-reviews` | Record evidence-backed topic-change review votes. |
-| `doc-splitter run-topic-reviews` | Execute review tasks concurrently through a heuristic test backend or external command bridge. |
+| `doc-splitter run-topic-reviews` | Execute review tasks concurrently through heuristic, command, OpenAI, or Anthropic backends. |
 | `doc-splitter write` | Write chunks and run verification. |
 | `doc-splitter verify` | Re-run verification against existing chunks and manifest. |
 | `doc-splitter get-chunk` | Read one chunk's content by numeric ID. |
@@ -432,7 +456,7 @@ Stores `study-index-fa.md`, `study-index-en.md`, and `study-map.md` authored by 
 | `get_boundary_context` | optional `output_dir` | no | Returns the current content window and safe cut candidates. |
 | `commit_boundary` | `action`, optional `element_id`, `reason`, `allow_oversize`, `continuity_evidence`, `continuity_reviewers`, `output_dir` | yes | Commits a cut or one-page evidence-gated extension. |
 | `get_topic_change_review_batch` | optional `output_dir`, `workers` | no | Returns three-role semantic review tasks, including heading-free change points. |
-| `run_parallel_topic_reviews` | optional `output_dir`, `workers`, `timeout_seconds`, `retries`, `max_output_bytes` | yes | Runs the operator-configured `DOC_SPLITTER_AGENT_COMMAND` concurrently and commits its votes. |
+| `run_parallel_topic_reviews` | optional `backend`, `model`, `output_dir`, `workers`, `timeout_seconds`, `retries`, `max_output_bytes`, `max_output_tokens` | yes | Runs command, OpenAI, or Anthropic reviewers concurrently and commits their votes. |
 | `commit_topic_change_reviews` | evidence-backed `reviews`, optional `output_dir` | yes | Stores votes; two `split` votes create a hard boundary and unresolved disagreement blocks planning. |
 | `write_chunks` | `output_format`, optional `output_dir`, `overlap_pages` | yes | Requires an explicit Markdown, PDF, or both choice, then writes chunks and runs verification. |
 | `get_chunk` | `chunk_id`, optional `output_dir` | no | Reads generated chunk content. |
@@ -444,7 +468,7 @@ Stores `study-index-fa.md`, `study-index-en.md`, and `study-map.md` authored by 
 | `get_study_index_context` | optional `output_dir`, `reading_speed_wpm` | no | Returns context for agent-authored Persian and English study indexes. |
 | `commit_study_index` | `index_fa`, `index_en`, `study_map`, optional `output_dir` | yes | Stores final bilingual indexes and a generic document-level study map. |
 
-The MCP server is a bounded Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`. Set `DOC_SPLITTER_AGENT_COMMAND` to enable the server-side parallel reviewer tool without exposing an arbitrary command in tool inputs. `DOC_SPLITTER_CLI_TIMEOUT_MS` and `DOC_SPLITTER_MAX_OUTPUT_BYTES` control process limits. When `split_document` omits `output_dir`, the server creates an isolated run directory under `output-runs/` to prevent concurrent jobs from overwriting each other. Large review and index payloads are transferred through temporary files instead of command-line arguments.
+The MCP server is a bounded Node.js wrapper around the Python CLI. It uses `DOC_SPLITTER_PYTHON` when set; otherwise it runs `python3`. `DOC_SPLITTER_REVIEW_BACKEND` may default reviews to `command`, `openai`, or `anthropic`. Command mode reads `DOC_SPLITTER_AGENT_COMMAND`; provider modes read `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` plus `DOC_SPLITTER_OPENAI_MODEL` or `DOC_SPLITTER_ANTHROPIC_MODEL`. `DOC_SPLITTER_CLI_TIMEOUT_MS` and `DOC_SPLITTER_MAX_OUTPUT_BYTES` control process limits. When `split_document` omits `output_dir`, the server creates an isolated run directory under `output-runs/` to prevent concurrent jobs from overwriting each other. Large review and index payloads are transferred through temporary files instead of command-line arguments.
 
 ## Workflow state safety
 
@@ -674,11 +698,17 @@ ducsplit/
 └── tests/
 ```
 
-Run tests:
+Install the locked development environment and run all checks:
 
 ```bash
-source .venv/bin/activate
-python -m pytest -q
+uv sync --frozen --extra dev --extra agents
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/doc_splitter
+uv run pytest -q
+npm ci
+npm test
+uv build
 ```
 
 Run the frozen phase-zero golden audit:
@@ -688,7 +718,7 @@ PYTHONPATH=src python3 scripts/audit-golden-corpus.py \
   --output docs/baseline/golden-results.json
 ```
 
-The frozen corpus originated in phase zero. Current repair-loop and MCP process-safety results are documented in [`docs/phase-4/phase-4.md`](docs/phase-4/phase-4.md).
+The frozen corpus originated in phase zero. Release hardening and direct provider adapters are documented in [`docs/phase-5/phase-5.md`](docs/phase-5/phase-5.md).
 
 Run the MCP server directly (waits for stdio MCP protocol messages):
 
@@ -711,9 +741,9 @@ Recommended workflow:
 - **Agent laziness is rejected** — auto-generated reasons (`auto-cut`, `auto from section_headings`), template study-focus, and index commits without reading chunk files are caught by validators and refused.
 - **Verification is content-derived** — generated Markdown is reconstructed element by element, image bytes are hashed, and PDF pages are compared to rendered source pages rather than trusted metadata.
 - **Topic changes beat page counts** — 5–12 pages is the preferred range, page 13 is soft, and 20 pages is absolute.
-- **Provider-neutral review execution** — the MCP host can supply subagents, or the CLI can run an external JSON-in/JSON-out reviewer command concurrently; no provider SDK is hard-wired into the core.
+- **Pluggable review execution** — the MCP host can supply subagents, the CLI can run an external JSON bridge, or optional OpenAI and Anthropic adapters can execute reviews directly.
 - **PDF fidelity and semantic precision differ** — Markdown is best for semantic processing; PDF output is best for visual study continuity.
 
 ## License
 
-No license file is currently included. Until one is added, the repository is public but not explicitly open-source licensed. Recommended next step: add an OSI-approved license (MIT or Apache-2.0).
+MIT. See [`LICENSE`](LICENSE).

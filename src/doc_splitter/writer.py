@@ -18,21 +18,21 @@ from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import save_json
 from doc_splitter.naming import resolve_chunk_names
 from doc_splitter.section_titles import infer_chunk_topic, list_section_headings
-from doc_splitter.workflow import BOUNDARY_COMPLETE, WRITING, require_stage
+from doc_splitter.storage import atomic_write_text
 from doc_splitter.structure_analyzer import (
     active_h1_for_element,
     analyze_structure,
     compute_chunk_page_ranges,
     page_range_for_elements,
 )
-
-_CHUNK_FILE_RE = re.compile(r"^\d{2}_.+\.(md|pdf)$")
-from doc_splitter.storage import atomic_write_text
+from doc_splitter.workflow import BOUNDARY_COMPLETE, WRITING, require_stage
 from doc_splitter.writers.markdown_writer import (
     extract_marked_section,
     render_markdown_chunk,
 )
 from doc_splitter.writers.pdf_writer import write_pdf_chunks
+
+_CHUNK_FILE_RE = re.compile(r"^\d{2}_.+\.(md|pdf)$")
 
 
 def validate_boundary_plan(
@@ -104,13 +104,9 @@ def validate_boundary_plan(
                 f"Boundary {position} end_element_id does not match IR index {end}: "
                 f"expected {expected_id}."
             )
-        start_page, end_page = page_range_for_elements(
-            ir, start, end, structure.element_pages
-        )
+        start_page, end_page = page_range_for_elements(ir, start, end, structure.element_pages)
         page_count = (
-            end_page - start_page + 1
-            if start_page is not None and end_page is not None
-            else None
+            end_page - start_page + 1 if start_page is not None and end_page is not None else None
         )
         if page_count is not None and page_count > config.hard_max_pages:
             raise ValueError(
@@ -155,11 +151,7 @@ def _chunk_ranges(
 
 def _cleanup_orphan_chunk_files(output_dir: Path, keep_files: set[str]) -> None:
     for path in output_dir.iterdir():
-        if (
-            path.is_file()
-            and _CHUNK_FILE_RE.match(path.name)
-            and path.name not in keep_files
-        ):
+        if path.is_file() and _CHUNK_FILE_RE.match(path.name) and path.name not in keep_files:
             path.unlink()
 
 
@@ -238,6 +230,9 @@ def write_chunks(
 
     write_md = config.output_format in ("markdown", "both")
     write_pdf = config.output_format in ("pdf", "both")
+    source_path = config.source_path
+    if write_pdf and source_path is None:
+        raise ValueError("PDF output requires a source_path")
     md_names = resolve_chunk_names(ir, session, ranges, config, ext="md") if write_md else []
     pdf_names = resolve_chunk_names(ir, session, ranges, config, ext="pdf") if write_pdf else []
 
@@ -300,8 +295,9 @@ def write_chunks(
                     shutil.copy2(preserved_pdf, output_dir / meta["file"])
                     reused_body = True if not write_md else reused_body
                 else:
+                    assert source_path is not None
                     write_pdf_chunks(
-                        config.source_path,
+                        source_path,
                         [page_ranges[i - 1]],
                         [meta],
                         output_dir,
@@ -316,7 +312,11 @@ def write_chunks(
         pr = page_ranges[i - 1]
         md_meta = md_names[i - 1] if md_names else None
         pdf_meta = pdf_names[i - 1] if pdf_names else None
-        primary = md_meta or pdf_meta or {"file": f"{i:02d}_section-{i}", "slug": f"section-{i}", "title": ""}
+        primary = (
+            md_meta
+            or pdf_meta
+            or {"file": f"{i:02d}_section-{i}", "slug": f"section-{i}", "title": ""}
+        )
 
         word_count = sum(ir.elements[j].word_count for j in range(start_idx, end_idx + 1))
         element_ids = [ir.elements[j].id for j in range(start_idx, end_idx + 1)]

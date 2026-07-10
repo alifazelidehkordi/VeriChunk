@@ -6,26 +6,46 @@ from pathlib import Path
 import pytest
 
 from doc_splitter.boundary.planner import SplitSession, load_session, save_session
+from doc_splitter.cli import main
 from doc_splitter.config import SplitConfig
 from doc_splitter.content.analyzer import commit_chunk_analysis
-from doc_splitter.cli import main
-from doc_splitter.writers.markdown_writer import extract_marked_section
 from doc_splitter.ir.models import DocumentIR, DocumentMeta, Element
 from doc_splitter.ir.serialize import save_ir
 from doc_splitter.orchestrator import run_boundary_repair, run_index_context, run_write_and_verify
 from doc_splitter.repair import get_boundary_repair_context
 from doc_splitter.workflow import WorkflowStateError
+from doc_splitter.writers.markdown_writer import extract_marked_section
 
 
 def _ir() -> DocumentIR:
     ir = DocumentIR(
         elements=[
             Element(id="el-001", type="heading", level=1, text="FOUNDATIONS"),
-            Element(id="el-002", type="paragraph", text="Foundational concepts and definitions remain cohesive."),
-            Element(id="el-003", type="paragraph", text="The second unit introduces a separate diagnostic framework."),
-            Element(id="el-004", type="paragraph", text="Diagnostic criteria and interpretation are explained here."),
-            Element(id="el-005", type="paragraph", text="A third unit begins with treatment planning principles."),
-            Element(id="el-006", type="paragraph", text="Treatment selection and follow-up complete the unit."),
+            Element(
+                id="el-002",
+                type="paragraph",
+                text="Foundational concepts and definitions remain cohesive.",
+            ),
+            Element(
+                id="el-003",
+                type="paragraph",
+                text="The second unit introduces a separate diagnostic framework.",
+            ),
+            Element(
+                id="el-004",
+                type="paragraph",
+                text="Diagnostic criteria and interpretation are explained here.",
+            ),
+            Element(
+                id="el-005",
+                type="paragraph",
+                text="A third unit begins with treatment planning principles.",
+            ),
+            Element(
+                id="el-006",
+                type="paragraph",
+                text="Treatment selection and follow-up complete the unit.",
+            ),
         ],
         meta=DocumentMeta(source_file="repair.docx"),
     )
@@ -152,9 +172,10 @@ def test_repair_splits_chunk_reverifies_and_preserves_unchanged_analysis(tmp_pat
         "rewritten_chunks": [2, 3],
     }
     unchanged_after = next(c for c in manifest["chunks"] if c["start_index"] == 0)
-    assert extract_marked_section(
-        (tmp_path / unchanged_after["file"]).read_text(encoding="utf-8")
-    ) == unchanged_body_before
+    assert (
+        extract_marked_section((tmp_path / unchanged_after["file"]).read_text(encoding="utf-8"))
+        == unchanged_body_before
+    )
     session = load_session(tmp_path)
     assert session.stage == "content_analysis"
     assert session.chunk_analyses["1"]["topic_en"] == "Foundational Concepts"

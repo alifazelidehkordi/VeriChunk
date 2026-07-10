@@ -16,9 +16,9 @@ from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import load_json, save_json
 from doc_splitter.section_titles import validate_boundary_reason
+from doc_splitter.storage import file_lock
 from doc_splitter.structure_analyzer import analyze_structure, page_range_for_elements
 from doc_splitter.topic_reviews import find_topic_change_candidates
-from doc_splitter.storage import file_lock
 from doc_splitter.workflow import (
     BOUNDARY,
     BOUNDARY_COMPLETE,
@@ -185,8 +185,7 @@ def _is_trailing_page_number_range(
     end_index: int,
 ) -> bool:
     return start_index <= end_index and all(
-        _is_page_number_artifact(el)
-        for el in ir.elements[start_index : end_index + 1]
+        _is_page_number_artifact(el) for el in ir.elements[start_index : end_index + 1]
     )
 
 
@@ -197,14 +196,8 @@ def _within_page_limit(
     element_pages: dict[str, int],
     max_pages: int,
 ) -> bool:
-    start_page, end_page = page_range_for_elements(
-        ir, start_index, candidate.index, element_pages
-    )
-    return (
-        start_page is None
-        or end_page is None
-        or end_page - start_page + 1 <= max_pages
-    )
+    start_page, end_page = page_range_for_elements(ir, start_index, candidate.index, element_pages)
+    return start_page is None or end_page is None or end_page - start_page + 1 <= max_pages
 
 
 def _next_confirmed_topic_boundary(
@@ -234,11 +227,7 @@ def get_topic_review_progress(
         stored = session.topic_change_reviews.get(candidate.review_id)
         consensus = stored.get("consensus") if stored else None
         votes = stored.get("votes", {}) if stored else {}
-        matching_votes = sum(
-            1
-            for vote in votes.values()
-            if vote.get("decision") == consensus
-        )
+        matching_votes = sum(1 for vote in votes.values() if vote.get("decision") == consensus)
         required_votes = (
             config.topic_change_min_votes
             if consensus == "split"
@@ -274,8 +263,7 @@ def commit_topic_change_reviews(
     """Persist evidence-backed semantic verdicts from independent reviewers."""
     require_stage(session, TOPIC_REVIEW, "commit topic-change reviews")
     candidates = {
-        candidate.review_id: candidate
-        for candidate in find_topic_change_candidates(ir, config)
+        candidate.review_id: candidate for candidate in find_topic_change_candidates(ir, config)
     }
     committed = 0
     for review in reviews:
@@ -333,20 +321,13 @@ def commit_topic_change_reviews(
             "evidence_before": evidence_before,
             "evidence_after": evidence_after,
         }
-        split_votes = sum(
-            1 for vote in votes.values() if vote.get("decision") == "split"
-        )
-        merge_votes = sum(
-            1 for vote in votes.values() if vote.get("decision") == "merge"
-        )
+        split_votes = sum(1 for vote in votes.values() if vote.get("decision") == "split")
+        merge_votes = sum(1 for vote in votes.values() if vote.get("decision") == "merge")
         # Split is intentionally asymmetric: a credible split minority prevents
         # an automatic merge until an adjudicator resolves the disagreement.
         if split_votes >= config.topic_change_min_votes:
             stored["consensus"] = "split"
-        elif (
-            merge_votes >= config.topic_change_merge_min_votes
-            and split_votes == 0
-        ):
+        elif merge_votes >= config.topic_change_merge_min_votes and split_votes == 0:
             stored["consensus"] = "merge"
         else:
             stored["consensus"] = "pending"
@@ -356,16 +337,10 @@ def commit_topic_change_reviews(
         transition_stage(session, BOUNDARY)
     save_session(session, Path(session.output_dir))
     split_count = sum(
-        1
-        for review in session.topic_change_reviews.values()
-        if review.get("consensus") == "split"
+        1 for review in session.topic_change_reviews.values() if review.get("consensus") == "split"
     )
     return {
-        "status": (
-            "topic_reviews_complete"
-            if progress["complete"]
-            else "topic_reviews_committed"
-        ),
+        "status": ("topic_reviews_complete" if progress["complete"] else "topic_reviews_committed"),
         "committed": committed,
         "confirmed_topic_boundaries": split_count,
         "review_progress": progress,
@@ -396,9 +371,7 @@ def _page_count_for_range(
     end_index: int,
     element_pages: dict[str, int],
 ) -> int | None:
-    start_page, end_page = page_range_for_elements(
-        ir, start_index, end_index, element_pages
-    )
+    start_page, end_page = page_range_for_elements(ir, start_index, end_index, element_pages)
     if start_page is None or end_page is None:
         return None
     return end_page - start_page + 1
@@ -452,7 +425,9 @@ def _validate_continuity_evidence(
     next_end_index: int,
 ) -> tuple[list[str], list[str]]:
     evidence_ids = list(dict.fromkeys(str(value) for value in (evidence or [])))
-    reviewer_ids = list(dict.fromkeys(str(value).strip() for value in (reviewers or []) if str(value).strip()))
+    reviewer_ids = list(
+        dict.fromkeys(str(value).strip() for value in (reviewers or []) if str(value).strip())
+    )
     if len(reviewer_ids) < config.continuity_min_reviewers:
         raise ValueError(
             f"Extending beyond soft_max_pages={config.soft_max_pages} requires "
@@ -520,9 +495,7 @@ def get_boundary_context(
     )
     min_target = start_words + config.min_chunk_words()
     candidates = [
-        candidate
-        for candidate in all_candidates
-        if candidate.cumulative_word_count >= min_target
+        candidate for candidate in all_candidates if candidate.cumulative_word_count >= min_target
     ]
     # A short final remainder is still a valid explicit final boundary.
     if not candidates and end_index == len(ir.elements) - 1:
@@ -549,9 +522,7 @@ def get_boundary_context(
         session.window_pages + config.boundary_window_extension_pages,
     )
     extension_requires_evidence = next_window > config.soft_max_pages
-    next_topic_boundary = _topic_boundary_within_page_limit(
-        ir, session, structure, next_window
-    )
+    next_topic_boundary = _topic_boundary_within_page_limit(ir, session, structure, next_window)
     can_extend = (
         document_continues
         and session.window_pages < config.hard_max_pages
@@ -563,11 +534,7 @@ def get_boundary_context(
     )
     prompt_path = Path(__file__).parent / "prompts" / "boundary.md"
     return {
-        "status": (
-            "requires_forced_size_split"
-            if forced_size_split
-            else "needs_agent_decision"
-        ),
+        "status": ("requires_forced_size_split" if forced_size_split else "needs_agent_decision"),
         "chunk_number": len(session.boundaries) + 1,
         "cursor_index": session.cursor_index,
         "window_pages": session.window_pages,
@@ -640,9 +607,7 @@ def commit_boundary(
             config.hard_max_pages,
             session.window_pages + config.boundary_window_extension_pages,
         )
-        blocking_topic = _topic_boundary_within_page_limit(
-            ir, session, structure, next_window
-        )
+        blocking_topic = _topic_boundary_within_page_limit(ir, session, structure, next_window)
         if blocking_topic is not None:
             raise ValueError(
                 "Cannot extend across a confirmed topic change before "
@@ -716,9 +681,7 @@ def commit_boundary(
         ir, session.cursor_index, end_index, structure.element_pages
     )
     est_pages = (
-        end_page - start_page + 1
-        if start_page is not None and end_page is not None
-        else None
+        end_page - start_page + 1 if start_page is not None and end_page is not None else None
     )
     if est_pages is not None and est_pages > config.hard_max_pages:
         raise ValueError(
@@ -779,8 +742,7 @@ def commit_boundary(
         }
 
     topic_boundary_here = any(
-        review.get("consensus") == "split"
-        and int(review.get("boundary_index", -1)) == end_index
+        review.get("consensus") == "split" and int(review.get("boundary_index", -1)) == end_index
         for review in session.topic_change_reviews.values()
     )
     document_continues = end_index < len(ir.elements) - 1

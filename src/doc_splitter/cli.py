@@ -5,10 +5,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
-from doc_splitter.agents import CommandAgentBackend, HeuristicAgentBackend, run_review_batch
+from doc_splitter.agents import (
+    AgentBackend,
+    AnthropicAgentBackend,
+    CommandAgentBackend,
+    HeuristicAgentBackend,
+    OpenAIAgentBackend,
+    run_review_batch,
+)
 from doc_splitter.boundary.planner import (
     commit_boundary,
     commit_topic_change_reviews,
@@ -24,7 +32,6 @@ from doc_splitter.content.analyzer import (
 )
 from doc_splitter.index_generator import commit_study_indexes
 from doc_splitter.ir.serialize import load_ir
-from doc_splitter.repair import get_boundary_repair_context
 from doc_splitter.orchestrator import (
     init_session,
     parse_document,
@@ -32,8 +39,9 @@ from doc_splitter.orchestrator import (
     run_index_context,
     run_write_and_verify,
 )
-from doc_splitter.verifier import verify_output
+from doc_splitter.repair import get_boundary_repair_context
 from doc_splitter.topic_reviews import build_topic_change_review_batch
+from doc_splitter.verifier import verify_output
 from doc_splitter.workflow import TOPIC_REVIEW, require_stage
 
 _SESSION_RESTORE_COMMANDS = frozenset(
@@ -62,8 +70,12 @@ def _add_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--min-pages", type=int, default=None)
     parser.add_argument("--max-pages", type=int, default=None)
     parser.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
-    parser.add_argument("--reading-speed-wpm", type=int, default=None,
-                        help="Study reading speed in words per minute (default: 80 for technical/medical content)")
+    parser.add_argument(
+        "--reading-speed-wpm",
+        type=int,
+        default=None,
+        help="Study reading speed in words per minute (default: 80 for technical/medical content)",
+    )
     parser.add_argument(
         "--output-format",
         choices=["markdown", "pdf", "both"],
@@ -83,12 +95,10 @@ def _config_from_args(args: argparse.Namespace) -> SplitConfig:
     defaults = SplitConfig()
     return SplitConfig(
         min_pages=(
-            args.min_pages if getattr(args, "min_pages", None) is not None
-            else defaults.min_pages
+            args.min_pages if getattr(args, "min_pages", None) is not None else defaults.min_pages
         ),
         max_pages=(
-            args.max_pages if getattr(args, "max_pages", None) is not None
-            else defaults.max_pages
+            args.max_pages if getattr(args, "max_pages", None) is not None else defaults.max_pages
         ),
         output_dir=args.output_dir,
         reading_speed_wpm=(
@@ -235,6 +245,7 @@ def cmd_run_topic_reviews(args: argparse.Namespace) -> int:
     if batch["total_tasks"] == 0:
         print(json.dumps({"status": "no_topic_candidates"}, indent=2))
         return 0
+    backend: AgentBackend
     if args.backend == "command":
         if not args.agent_command:
             raise ValueError("--agent-command is required for --backend command")
@@ -243,12 +254,36 @@ def cmd_run_topic_reviews(args: argparse.Namespace) -> int:
             timeout_seconds=args.timeout_seconds,
             max_output_bytes=args.agent_max_output_bytes,
         )
+    elif args.backend == "openai":
+        model = args.model or os.environ.get("DOC_SPLITTER_OPENAI_MODEL")
+        if not model:
+            raise ValueError(
+                "--model or DOC_SPLITTER_OPENAI_MODEL is required for --backend openai"
+            )
+        backend = OpenAIAgentBackend(
+            model=model,
+            api_key_env=args.api_key_env or "OPENAI_API_KEY",
+            base_url=args.base_url,
+            timeout_seconds=args.timeout_seconds,
+            max_output_tokens=args.max_output_tokens,
+        )
+    elif args.backend == "anthropic":
+        model = args.model or os.environ.get("DOC_SPLITTER_ANTHROPIC_MODEL")
+        if not model:
+            raise ValueError(
+                "--model or DOC_SPLITTER_ANTHROPIC_MODEL is required for --backend anthropic"
+            )
+        backend = AnthropicAgentBackend(
+            model=model,
+            api_key_env=args.api_key_env or "ANTHROPIC_API_KEY",
+            base_url=args.base_url,
+            timeout_seconds=args.timeout_seconds,
+            max_output_tokens=args.max_output_tokens,
+        )
     else:
         backend = HeuristicAgentBackend()
     reviews = asyncio.run(
-        run_review_batch(
-            batch, backend, workers=args.workers, retries=args.retries
-        )
+        run_review_batch(batch, backend, workers=args.workers, retries=args.retries)
     )
     result = commit_topic_change_reviews(ir, session, config, reviews)
     print(
@@ -328,7 +363,6 @@ def cmd_commit_analysis(args: argparse.Namespace) -> int:
     return 0
 
 
-
 def cmd_repair_context(args: argparse.Namespace) -> int:
     ctx = get_boundary_repair_context(args.output_dir, args.chunk_id)
     print(json.dumps(ctx, ensure_ascii=False, indent=2))
@@ -345,6 +379,7 @@ def cmd_repair_boundary(args: argparse.Namespace) -> int:
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
+
 
 def cmd_index(args: argparse.Namespace) -> int:
     config = _resolve_config(args)
@@ -387,7 +422,9 @@ def cmd_commit_index(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="doc-splitter", description="Conceptual document splitter")
+    parser = argparse.ArgumentParser(
+        prog="doc-splitter", description="Conceptual document splitter"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_run = sub.add_parser("run", help="Parse document and start boundary session")
@@ -455,8 +492,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Execute semantic review tasks concurrently and commit their votes",
     )
     p_rtr.add_argument("--workers", type=int, default=4)
-    p_rtr.add_argument("--backend", choices=["heuristic", "command"], default="command")
+    p_rtr.add_argument(
+        "--backend",
+        choices=["heuristic", "command", "openai", "anthropic"],
+        default="command",
+    )
     p_rtr.add_argument("--agent-command", default=None)
+    p_rtr.add_argument("--model", default=None)
+    p_rtr.add_argument("--api-key-env", default=None)
+    p_rtr.add_argument("--base-url", default=None)
+    p_rtr.add_argument("--max-output-tokens", type=int, default=1200)
     p_rtr.add_argument("--timeout-seconds", type=float, default=120.0)
     p_rtr.add_argument("--retries", type=int, default=1)
     p_rtr.add_argument("--agent-max-output-bytes", type=int, default=2 * 1024 * 1024)
@@ -491,7 +536,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_ca.add_argument("--reason", default="")
     p_ca.add_argument("--out", type=Path, default=Path("output"), dest="output_dir")
     p_ca.set_defaults(func=cmd_commit_analysis)
-
 
     p_rc = sub.add_parser("repair-context", help="Get a safe split-only repair context")
     p_rc.add_argument("--chunk-id", type=int, required=True)

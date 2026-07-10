@@ -110,8 +110,6 @@ def test_writer_rejects_incomplete_boundary_plan_without_creating_manifest(tmp_p
     assert not (tmp_path / "manifest.json").exists()
 
 
-
-
 def test_writer_rejects_unresolved_topic_reviews(tmp_path: Path):
     ir = _topic_ir()
     session = SplitSession(

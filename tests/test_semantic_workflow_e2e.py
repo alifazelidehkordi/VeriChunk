@@ -26,9 +26,7 @@ def test_heading_free_topic_change_completes_end_to_end(tmp_path: Path):
     assert session.stage == "topic_review"
 
     batch = build_topic_change_review_batch(ir, config, workers=3)
-    reviews = asyncio.run(
-        run_review_batch(batch, HeuristicAgentBackend(), workers=3)
-    )
+    reviews = asyncio.run(run_review_batch(batch, HeuristicAgentBackend(), workers=3))
     commit_topic_change_reviews(ir, load_session(tmp_path), config, reviews)
 
     session = load_session(tmp_path)

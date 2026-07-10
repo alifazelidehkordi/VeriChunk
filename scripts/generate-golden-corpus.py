@@ -8,8 +8,8 @@ current implementation. Run from anywhere; output is written under tests/golden.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -27,9 +27,7 @@ SOURCE_DIR = GOLDEN / "source"
 def _save(name: str, elements: list[Element]) -> str:
     ir = DocumentIR(elements=elements, meta=DocumentMeta(source_file=f"{name}.pdf"))
     ir.recompute_word_counts()
-    ir.meta.estimated_total_pages = max(
-        (element.page_number or 1) for element in elements
-    )
+    ir.meta.estimated_total_pages = max((element.page_number or 1) for element in elements)
     relative = Path("ir") / f"{name}.json"
     save_ir(ir, GOLDEN / relative)
     return relative.as_posix()
@@ -163,7 +161,10 @@ def _build_ir_cases() -> list[dict]:
             "source": source,
             "expected": {
                 "topic_boundaries_after": [],
-                "page_policy": {"allowed_single_chunk_pages": 17, "requires_extension_evidence": True},
+                "page_policy": {
+                    "allowed_single_chunk_pages": 17,
+                    "requires_extension_evidence": True,
+                },
             },
         }
     )
@@ -295,10 +296,10 @@ def _normalize_zip(path: Path) -> None:
 def _build_docx() -> None:
     from datetime import datetime, timezone
 
+    import pymupdf
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Inches
-    import pymupdf
 
     image_path = SOURCE_DIR / "fixture-image.png"
     pixmap = pymupdf.Pixmap(pymupdf.csRGB, (0, 0, 64, 64), 0)

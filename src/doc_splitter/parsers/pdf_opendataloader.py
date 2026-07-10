@@ -113,7 +113,8 @@ def _extract_layout_elements(data: Any) -> list[LayoutElement]:
     for page_idx, page in enumerate(pages):
         if not isinstance(page, dict):
             continue
-        page_num = int(page.get("page_number", page.get("page", page_idx + 1)))
+        raw_page_num = page.get("page_number", page.get("page", page_idx + 1))
+        page_num = int(page_idx + 1 if raw_page_num is None else raw_page_num)
         children = page.get("elements", page.get("blocks", page.get("content", [])))
         if not isinstance(children, list):
             continue
@@ -131,11 +132,15 @@ def _bbox_from(obj: dict[str, Any], page: int) -> tuple[float, float, float, flo
     box = obj.get("bbox") or obj.get("bounding_box") or obj.get("rect")
     if isinstance(box, dict):
         try:
+            x0 = box.get("x0", box.get("left", 0))
+            y0 = box.get("y0", box.get("top", 0))
+            x1 = box.get("x1", box.get("right", 0))
+            y1 = box.get("y1", box.get("bottom", 0))
             return (
-                float(box.get("x0", box.get("left", 0))),
-                float(box.get("y0", box.get("top", 0))),
-                float(box.get("x1", box.get("right", 0))),
-                float(box.get("y1", box.get("bottom", 0))),
+                float(0 if x0 is None else x0),
+                float(0 if y0 is None else y0),
+                float(0 if x1 is None else x1),
+                float(0 if y1 is None else y1),
             )
         except (TypeError, ValueError):
             return None

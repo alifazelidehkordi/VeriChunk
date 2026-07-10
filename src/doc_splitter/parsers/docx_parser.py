@@ -6,6 +6,7 @@ import hashlib
 import mimetypes
 import re
 from pathlib import Path
+from typing import Protocol
 
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, DocumentMeta, Element
@@ -69,7 +70,13 @@ def _clean_list_item(text: str) -> str:
     return _BULLET_PREFIX_RE.sub("", text.strip()).strip()
 
 
-def _image_suffix(part) -> str:
+class _ImagePart(Protocol):
+    blob: bytes
+    partname: object
+    content_type: str
+
+
+def _image_suffix(part: _ImagePart) -> str:
     part_name = str(getattr(part, "partname", ""))
     suffix = Path(part_name).suffix.lower()
     if suffix:
@@ -79,8 +86,8 @@ def _image_suffix(part) -> str:
     return guessed or ".bin"
 
 
-def _paragraph_image_parts(paragraph, document) -> list[object]:
-    parts: list[object] = []
+def _paragraph_image_parts(paragraph, document) -> list[_ImagePart]:
+    parts: list[_ImagePart] = []
     for run in paragraph.runs:
         for node in run._element.iter():
             if node.tag != _DRAWING_BLIP_TAG:
@@ -156,11 +163,7 @@ def parse_docx(path: Path, config: SplitConfig, images_dir: Path | None = None) 
             # A centered text paragraph may act as a caption; ordinary surrounding
             # prose remains a separate paragraph and is not duplicated as a caption.
             flush_list()
-            caption = (
-                text
-                if text and block.alignment == WD_PARAGRAPH_ALIGNMENT.CENTER
-                else None
-            )
+            caption = text if text and block.alignment == WD_PARAGRAPH_ALIGNMENT.CENTER else None
             for part in image_parts:
                 if not config.image_extraction or images_dir is None:
                     continue

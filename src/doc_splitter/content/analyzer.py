@@ -14,6 +14,13 @@ from doc_splitter.boundary.planner import (
     save_session,
 )
 from doc_splitter.ir.serialize import load_ir, save_json
+from doc_splitter.naming import slugify
+from doc_splitter.section_titles import (
+    infer_chunk_topic,
+    list_section_headings,
+    validate_analysis,
+    validate_analysis_reason,
+)
 from doc_splitter.storage import atomic_write_text
 from doc_splitter.workflow import (
     BOUNDARY_REPAIR,
@@ -21,13 +28,6 @@ from doc_splitter.workflow import (
     INDEX,
     require_stage,
     transition_stage,
-)
-from doc_splitter.naming import slugify
-from doc_splitter.section_titles import (
-    infer_chunk_topic,
-    list_section_headings,
-    validate_analysis,
-    validate_analysis_reason,
 )
 
 
@@ -183,9 +183,7 @@ def _apply_agent_topic_filename(
         return
 
     used_slugs = {
-        c.get("slug", "")
-        for c in chunks
-        if int(c.get("id", 0)) != chunk_id and c.get("slug")
+        c.get("slug", "") for c in chunks if int(c.get("id", 0)) != chunk_id and c.get("slug")
     }
     slug = _unique_topic_slug(topic_en, chunk_id, used_slugs)
     base = f"{chunk_id:02d}_{slug}"
@@ -363,11 +361,7 @@ def _write_semantic_report(
     valid_chunk_ids: set[int],
 ) -> None:
     valid_keys = {str(chunk_id) for chunk_id in valid_chunk_ids}
-    analyses = {
-        key: value
-        for key, value in session.chunk_analyses.items()
-        if key in valid_keys
-    }
+    analyses = {key: value for key, value in session.chunk_analyses.items() if key in valid_keys}
     needs_review = [
         {"chunk_id": int(k), **v}
         for k, v in analyses.items()

@@ -73,9 +73,7 @@ def transition_stage(session: Any, target: str) -> None:
     if target == current:
         return
     if target not in _ALLOWED_TRANSITIONS[current]:
-        raise WorkflowStateError(
-            f"Invalid workflow transition: {current} -> {target}."
-        )
+        raise WorkflowStateError(f"Invalid workflow transition: {current} -> {target}.")
     session.stage = target
     session.last_error = None
     session.failed_from = None

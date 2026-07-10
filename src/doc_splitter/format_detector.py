@@ -36,6 +36,4 @@ def detect_format(path: Path) -> InputFormat:
     if header.startswith(DOCX_MAGIC):
         return InputFormat.DOCX
 
-    raise FormatError(
-        f"Unsupported file format for {path.name}. Supported: .pdf, .docx"
-    )
+    raise FormatError(f"Unsupported file format for {path.name}. Supported: .pdf, .docx")

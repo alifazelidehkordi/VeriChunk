@@ -146,7 +146,9 @@ def get_index_context(output_dir: Path, config: SplitConfig) -> dict[str, Any]:
         },
         "chunks": chunks,
         "chunks_read": session.chunks_read,
-        "chunks_unread": [i for i in range(1, len(manifest.get("chunks", [])) + 1) if i not in session.chunks_read],
+        "chunks_unread": [
+            i for i in range(1, len(manifest.get("chunks", [])) + 1) if i not in session.chunks_read
+        ],
         "instructions": prompt_path.read_text(encoding="utf-8"),
     }
 
@@ -191,9 +193,7 @@ def _validate_study_map(text: str, manifest: dict[str, Any]) -> None:
     _validate_agent_index(text, lang="Study map", manifest=manifest)
     missing_sections = [section for section in _STUDY_MAP_SECTIONS if section not in text]
     if missing_sections:
-        raise ValueError(
-            "Study map is missing required sections: " + ", ".join(missing_sections)
-        )
+        raise ValueError("Study map is missing required sections: " + ", ".join(missing_sections))
 
 
 def _validate_index_quality(

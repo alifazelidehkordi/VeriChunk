@@ -10,16 +10,15 @@ from doc_splitter.boundary.planner import (
     load_session,
     save_session,
 )
-from doc_splitter.config import SplitConfig, config_from_dict, config_to_dict
+from doc_splitter.config import SplitConfig, config_to_dict
 from doc_splitter.format_detector import InputFormat, detect_format
 from doc_splitter.index_generator import get_index_context
 from doc_splitter.ir.models import DocumentIR
 from doc_splitter.ir.serialize import save_ir, save_json
 from doc_splitter.parsers import parse_docx, parse_pdf
-from doc_splitter.verifier import verify_output
 from doc_splitter.repair import commit_boundary_repair_plan
-from doc_splitter.writer import validate_boundary_plan, write_chunks
 from doc_splitter.semantic import build_semantic_map
+from doc_splitter.verifier import verify_output
 from doc_splitter.workflow import (
     BOUNDARY,
     BOUNDARY_COMPLETE,
@@ -33,6 +32,7 @@ from doc_splitter.workflow import (
     require_stage,
     transition_stage,
 )
+from doc_splitter.writer import validate_boundary_plan, write_chunks
 
 
 class PipelineError(RuntimeError):
@@ -62,11 +62,7 @@ def init_session(
 ) -> SplitSession:
     semantic_map = build_semantic_map(ir, config)
     save_json(semantic_map, config.output_dir / "semantic-map.json")
-    initial_stage = (
-        TOPIC_REVIEW
-        if semantic_map["change_candidates"]
-        else BOUNDARY
-    )
+    initial_stage = TOPIC_REVIEW if semantic_map["change_candidates"] else BOUNDARY
     session = SplitSession(
         source_file=input_path.name,
         output_dir=str(config.output_dir.resolve()),
@@ -88,8 +84,7 @@ def run_write_and_verify(ir: DocumentIR, config: SplitConfig) -> dict:
     if session.stage == FAILED:
         if session.failed_from not in {WRITING, VERIFICATION}:
             raise PipelineError(
-                "The failed session cannot be retried by write; "
-                f"failed_from={session.failed_from}."
+                f"The failed session cannot be retried by write; failed_from={session.failed_from}."
             )
         transition_stage(session, WRITING)
         repair_mode = bool(session.active_repair)
@@ -122,9 +117,7 @@ def run_write_and_verify(ir: DocumentIR, config: SplitConfig) -> dict:
 
         report = verify_output(ir, config.output_dir, config)
         if not report["passed"]:
-            raise PipelineError(
-                "Verification failed: " + "; ".join(report.get("errors", []))
-            )
+            raise PipelineError("Verification failed: " + "; ".join(report.get("errors", [])))
         if repair_mode and session.active_repair:
             completed = dict(session.active_repair)
             completed["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -167,6 +160,7 @@ def run_boundary_repair(
         "verification": report,
         "next_stage": load_session(restored_config.output_dir).stage,
     }
+
 
 def run_index_context(config: SplitConfig) -> dict:
     session = load_session(config.output_dir)

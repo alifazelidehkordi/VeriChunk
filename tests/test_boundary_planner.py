@@ -6,15 +6,14 @@ from doc_splitter.boundary.planner import (
     commit_topic_change_reviews,
     get_boundary_context,
 )
-from doc_splitter.topic_reviews import build_topic_change_review_batch
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, DocumentMeta, Element
+from doc_splitter.topic_reviews import build_topic_change_review_batch
 
 
 def _paragraphs(n: int) -> list[Element]:
     return [
-        Element(id=f"el-{i:03d}", type="paragraph", text=f"word{i} " * 50)
-        for i in range(1, n + 1)
+        Element(id=f"el-{i:03d}", type="paragraph", text=f"word{i} " * 50) for i in range(1, n + 1)
     ]
 
 
@@ -103,12 +102,15 @@ def test_confirmed_topic_change_becomes_a_hard_boundary(tmp_path):
     batch = build_topic_change_review_batch(ir, config, workers=2)
     task = batch["batches"][0][0]
     assert batch["reviewers_per_task"] == 3
-    assert sum(
-        1
-        for worker_batch in batch["batches"]
-        for candidate in worker_batch
-        if candidate["review_id"] == task["review_id"]
-) == 3
+    assert (
+        sum(
+            1
+            for worker_batch in batch["batches"]
+            for candidate in worker_batch
+            if candidate["review_id"] == task["review_id"]
+        )
+        == 3
+    )
 
     result = commit_topic_change_reviews(
         ir,

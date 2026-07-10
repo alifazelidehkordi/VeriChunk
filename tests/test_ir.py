@@ -56,6 +56,7 @@ def test_resolved_page_number_from_bbox_only():
     )
     assert el.resolved_page_number() == 7
 
+
 def test_image_content_hash_roundtrip(tmp_path: Path):
     element = Element(
         id="el-001",

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
 import os
-from pathlib import Path
 import tempfile
-from typing import Any, Iterator
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
 
 
 @contextmanager
@@ -25,7 +26,8 @@ def file_lock(path: Path) -> Iterator[None]:
                 handle.write(b"\0")
                 handle.flush()
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            msvcrt_api: Any = msvcrt
+            msvcrt_api.locking(handle.fileno(), msvcrt_api.LK_LOCK, 1)
         else:
             import fcntl
 
@@ -37,7 +39,8 @@ def file_lock(path: Path) -> Iterator[None]:
                 import msvcrt
 
                 handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt_unlock_api: Any = msvcrt
+                msvcrt_unlock_api.locking(handle.fileno(), msvcrt_unlock_api.LK_UNLCK, 1)
             else:
                 import fcntl
 

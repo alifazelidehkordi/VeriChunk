@@ -8,25 +8,25 @@ implementation is expected to satisfy every golden requirement.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
-from contextlib import contextmanager
 import json
-from pathlib import Path
 import sys
 import tempfile
 import types
-from typing import Iterator
+from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from doc_splitter.boundary.planner import find_topic_change_candidates  # noqa: E402
 from doc_splitter.config import SplitConfig  # noqa: E402
 from doc_splitter.ir.serialize import load_ir  # noqa: E402
 from doc_splitter.parsers.docx_parser import parse_docx  # noqa: E402
 from doc_splitter.parsers.pdf_pymupdf import parse_pdf_pymupdf  # noqa: E402
-from doc_splitter.boundary.planner import find_topic_change_candidates  # noqa: E402
 
 GOLDEN = ROOT / "tests" / "golden"
 
@@ -112,10 +112,7 @@ def _audit_docx(case: dict) -> dict:
         }
         expected_items = case["expected"]["list_items"]
         actual_items = [
-            item
-            for element in ir.elements
-            if element.type == "list"
-            for item in element.items
+            item for element in ir.elements if element.type == "list" for item in element.items
         ]
         missing_items = [item for item in expected_items if item not in actual_items]
         status = "match" if not missing_counts and not missing_items else "gap"
@@ -170,9 +167,7 @@ def run() -> dict:
         elif case["kind"] == "docx":
             results.append(_audit_docx(case))
         else:
-            results.append(
-                {"id": case["id"], "kind": case["kind"], "status": "unsupported"}
-            )
+            results.append({"id": case["id"], "kind": case["kind"], "status": "unsupported"})
 
     counts = Counter(result["status"] for result in results)
     return {

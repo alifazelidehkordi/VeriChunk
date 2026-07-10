@@ -4,12 +4,12 @@ import asyncio
 from pathlib import Path
 
 from doc_splitter.agents.scheduler import run_review_batch
+from doc_splitter.boundary.planner import load_session
 from doc_splitter.cli import main
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.serialize import load_ir, save_ir
 from doc_splitter.orchestrator import init_session
 from doc_splitter.topic_reviews import build_topic_change_review_batch
-from doc_splitter.boundary.planner import load_session
 
 GOLDEN_IR = Path(__file__).parent / "golden" / "ir"
 
@@ -124,6 +124,7 @@ def test_command_backend_rejects_unbounded_output(tmp_path: Path):
     batch = build_topic_change_review_batch(ir, SplitConfig(), workers=1)
 
     import pytest
+
     with pytest.raises(RuntimeError, match="exceeded 1024 bytes"):
         asyncio.run(
             run_review_batch(
@@ -192,6 +193,7 @@ def test_scheduler_cancels_sibling_reviews_after_fatal_failure():
     backend = FailingBackend()
 
     import pytest
+
     with pytest.raises(RuntimeError, match="fatal reviewer failure"):
         asyncio.run(run_review_batch(batch, backend, workers=3, retries=0))
     assert backend.cancelled >= 1

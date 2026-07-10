@@ -60,8 +60,7 @@ async def run_review_batch(
         key = (str(result["review_id"]), str(result["reviewer_id"]))
         if key in seen:
             raise ValueError(
-                "Independent reviewer IDs must be unique per boundary; "
-                f"duplicate result: {key}"
+                f"Independent reviewer IDs must be unique per boundary; duplicate result: {key}"
             )
         seen.add(key)
     return results

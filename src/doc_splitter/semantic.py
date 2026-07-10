@@ -8,9 +8,9 @@ scored using context on both sides.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 from doc_splitter.config import SplitConfig
 from doc_splitter.ir.models import DocumentIR, Element
@@ -24,31 +24,132 @@ _BOLD_SPAN_RE = re.compile(r"\*\*([^*]+)\*\*")
 # continuity between unrelated subjects. Persian entries cover common connective
 # words without attempting language-specific stemming.
 _STOPWORDS = {
-    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "from",
-    "with", "by", "as", "at", "is", "are", "was", "were", "be", "been", "this",
-    "that", "these", "those", "it", "its", "into", "also", "can", "may", "will",
-    "would", "should", "through", "between", "after", "before", "during", "using",
-    "used", "page", "section", "chapter", "topic", "example", "study", "unit",
-    "و", "در", "به", "از", "که", "این", "آن", "با", "برای", "یا", "یک", "را",
-    "است", "هست", "شد", "شود", "می", "های", "ها", "بر", "تا", "اما", "نیز",
-    "بخش", "فصل", "موضوع", "مثال", "صفحه",
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "of",
+    "to",
+    "in",
+    "on",
+    "for",
+    "from",
+    "with",
+    "by",
+    "as",
+    "at",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "into",
+    "also",
+    "can",
+    "may",
+    "will",
+    "would",
+    "should",
+    "through",
+    "between",
+    "after",
+    "before",
+    "during",
+    "using",
+    "used",
+    "page",
+    "section",
+    "chapter",
+    "topic",
+    "example",
+    "study",
+    "unit",
+    "و",
+    "در",
+    "به",
+    "از",
+    "که",
+    "این",
+    "آن",
+    "با",
+    "برای",
+    "یا",
+    "یک",
+    "را",
+    "است",
+    "هست",
+    "شد",
+    "شود",
+    "می",
+    "های",
+    "ها",
+    "بر",
+    "تا",
+    "اما",
+    "نیز",
+    "بخش",
+    "فصل",
+    "موضوع",
+    "مثال",
+    "صفحه",
 }
 
 _GENERIC_CONTINUATION_HEADINGS = {
-    "worked example", "example", "examples", "case example", "practice",
-    "exercise", "exercises", "summary", "review", "key points", "discussion",
-    "application", "applications", "notes", "note", "continued", "continuation",
-    "مثال", "مثال حل شده", "تمرین", "خلاصه", "مرور", "نکات کلیدی", "ادامه",
+    "worked example",
+    "example",
+    "examples",
+    "case example",
+    "practice",
+    "exercise",
+    "exercises",
+    "summary",
+    "review",
+    "key points",
+    "discussion",
+    "application",
+    "applications",
+    "notes",
+    "note",
+    "continued",
+    "continuation",
+    "مثال",
+    "مثال حل شده",
+    "تمرین",
+    "خلاصه",
+    "مرور",
+    "نکات کلیدی",
+    "ادامه",
 }
 
 _CONCLUSION_MARKERS = (
-    "this concludes", "in conclusion", "to summarize", "therefore", "finally",
-    "در نتیجه", "در پایان", "جمع بندی", "خلاصه",
+    "this concludes",
+    "in conclusion",
+    "to summarize",
+    "therefore",
+    "finally",
+    "در نتیجه",
+    "در پایان",
+    "جمع بندی",
+    "خلاصه",
 )
 
 _NEW_TOPIC_MARKERS = (
-    "a valid", "we now turn", "next topic", "in contrast", "separately",
-    "موضوع بعد", "در ادامه به", "از سوی دیگر",
+    "a valid",
+    "we now turn",
+    "next topic",
+    "in contrast",
+    "separately",
+    "موضوع بعد",
+    "در ادامه به",
+    "از سوی دیگر",
 )
 
 
@@ -151,7 +252,9 @@ def _meaningful_indices(ir: DocumentIR, start: int, stop: int, step: int, limit:
     return indices
 
 
-def _context_indices(ir: DocumentIR, boundary_index: int, count: int) -> tuple[list[int], list[int]]:
+def _context_indices(
+    ir: DocumentIR, boundary_index: int, count: int
+) -> tuple[list[int], list[int]]:
     before = _meaningful_indices(ir, boundary_index, 0, -1, count)
     after = _meaningful_indices(ir, boundary_index + 1, len(ir.elements) - 1, 1, count)
     return before, after
@@ -318,8 +421,7 @@ def find_semantic_change_points(ir: DocumentIR, config: SplitConfig) -> list[Sem
         reverse=True,
     ):
         if any(
-            abs(candidate.boundary_index - existing.boundary_index)
-            <= config.semantic_nms_radius
+            abs(candidate.boundary_index - existing.boundary_index) <= config.semantic_nms_radius
             for existing in selected
         ):
             continue

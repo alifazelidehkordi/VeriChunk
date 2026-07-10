@@ -68,9 +68,7 @@ def candidates_in_word_window(
     if cursor_index >= len(ir.elements):
         return cursor_index, []
 
-    start_words = (
-        ir.elements[cursor_index - 1].cumulative_word_count if cursor_index > 0 else 0
-    )
+    start_words = ir.elements[cursor_index - 1].cumulative_word_count if cursor_index > 0 else 0
     target_words = start_words + window_words
     end_index = cursor_index
 

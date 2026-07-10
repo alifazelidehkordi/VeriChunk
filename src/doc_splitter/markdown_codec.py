@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 from doc_splitter.ir.models import Element
 
@@ -112,9 +112,7 @@ def rendered_word_count(body: str, element_type: str) -> int:
         text = re.sub(r"^#{1,6}\s+", "", body.strip())
     elif element_type == "list":
         text = " ".join(
-            re.sub(r"^\s*[-*+]\s+", "", line)
-            for line in body.splitlines()
-            if line.strip()
+            re.sub(r"^\s*[-*+]\s+", "", line) for line in body.splitlines() if line.strip()
         )
     elif element_type == "table":
         cells: list[str] = []

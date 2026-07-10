@@ -122,7 +122,9 @@ def test_verifier_fails_when_actual_markdown_text_is_replaced(tmp_path: Path):
 
     report = verify_output(ir, tmp_path, config)
     assert report["passed"] is False
-    assert any("rendered content mismatch for element el-002" in error for error in report["errors"])
+    assert any(
+        "rendered content mismatch for element el-002" in error for error in report["errors"]
+    )
 
 
 def test_verifier_fails_when_markdown_integrity_markers_are_removed(tmp_path: Path):
