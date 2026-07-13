@@ -6,7 +6,7 @@
 
 Turn long PDF and DOCX files into coherent, study-sized Markdown or PDF chunks—without cutting through paragraphs, lists, tables, or ideas.
 
-[![CI](https://github.com/alifazelidehkordi/ducsplit/actions/workflows/ci.yml/badge.svg)](https://github.com/alifazelidehkordi/ducsplit/actions/workflows/ci.yml)
+[![CI](https://github.com/alifazelidehkordi/VeriChunk/actions/workflows/ci.yml/badge.svg)](https://github.com/alifazelidehkordi/VeriChunk/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-beta-orange)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Node.js](https://img.shields.io/badge/node.js-18%2B-green)
@@ -96,7 +96,7 @@ Java is recommended, not mandatory. If OpenDataLoader is unavailable, PDF parsin
 ### Install from source
 
 ```bash
-git clone https://github.com/alifazelidehkordi/ducsplit.git verichunk
+git clone https://github.com/alifazelidehkordi/VeriChunk.git
 cd verichunk
 
 python3 -m venv .venv
@@ -114,7 +114,6 @@ node --check server.js
 java -version  # optional, but recommended for PDF reconciliation
 ```
 
-The legacy `doc-splitter` command remains available during the name migration.
 
 ### Start a document session
 
@@ -624,7 +623,7 @@ The new public brand is **VeriChunk**. The migration is intentionally non-breaki
 
 | Interface | Preferred | Compatibility status |
 |---|---|---|
-| Project/repository name | `verichunk` | Rename the GitHub repository after merging this change. |
+| Project/repository name | `VeriChunk` | Current public repository and product name. |
 | CLI | `verichunk` | `doc-splitter` remains available. |
 | MCP server registration | `verichunk` | Existing `doc-splitter` registrations can continue to work. |
 | Python distribution | `doc-splitter` | Retained in the 0.5 series to avoid lockfile and package breakage. |
